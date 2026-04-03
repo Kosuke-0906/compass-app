@@ -185,7 +185,7 @@ export default function CalendarPage() {
                 <div key={g.id} className="p-4 rounded-xl border border-border shadow-sm flex items-start gap-3">
                   <Mountain className="text-purple-500 mt-0.5" size={18}/>
                   <div className="flex-1">
-                    <p className="text-xs text-muted-foreground font-semibold mb-1">長期ターゲット</p>
+                    <p className="text-xs text-muted-foreground font-semibold mb-1">長期目標</p>
                     <p className={`font-bold text-base text-foreground leading-tight ${g.isCompleted ? 'line-through opacity-70' : ''}`}>
                       {g.title}
                     </p>

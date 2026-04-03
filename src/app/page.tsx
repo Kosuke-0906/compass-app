@@ -1,32 +1,67 @@
 "use client";
 
-import { useState, Suspense, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { CheckCircle2, Circle, Smartphone, BookOpen, Moon, Sun, Edit3, Plus, RotateCw, ListTodo, CalendarClock, CalendarDays, Utensils, ChevronLeft, ChevronRight, ChevronDown, Flag, Trash2 } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { useSearchParams } from "next/navigation";
+import { 
+  CheckCircle2, 
+  Circle, 
+  Plus, 
+  Trash2, 
+  CalendarDays, 
+  CalendarClock, 
+  RotateCw, 
+  Edit3, 
+  Smartphone, 
+  Utensils, 
+  BookOpen, 
+  BarChart2, 
+  Clock,
+  ChevronRight
+} from "lucide-react";
+import { format, parseISO, startOfDay, isToday } from "date-fns";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
-import { collection, doc, query, where, onSnapshot, getDoc } from "firebase/firestore";
+import { 
+  doc, 
+  onSnapshot, 
+  setDoc, 
+  collection, 
+  query, 
+  where, 
+  serverTimestamp, 
+  deleteDoc,
+  updateDoc
+} from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
-import {
-  saveRoutine, deleteRoutine, toggleRoutineCompletion, RoutineItem, MasterRoutine, getMasterRoutines,
-  saveTodo, deleteTodo, toggleTodoCompletion, TodoItem,
-  saveDailyLog
+import { 
+  RoutineItem, 
+  TodoItem, 
+  saveRoutine, 
+  deleteRoutine, 
+  saveTodo, 
+  deleteTodo,
+  getMasterRoutines
 } from "@/lib/firebase/db";
 
+// メインコンポーネントをSuspenseで包むためのラッパー
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center animate-pulse text-muted-foreground">Loading...</div>}>
+      <DailyContent />
+    </Suspense>
+  );
+}
+
 function DailyContent() {
+  const { dict } = useLanguage();
   const searchParams = useSearchParams();
   const dateParam = searchParams.get("date");
-  const displayDate = dateParam ? parseISO(dateParam) : new Date();
-  const { dict } = useLanguage();
-
-  const [routines, setRoutines] = useState<RoutineItem[]>([]);
-  const [todos, setTodos] = useState<TodoItem[]>([]);
-  const [newRoutineText, setNewRoutineText] = useState("");
-  const [newTodoText, setNewTodoText] = useState("");
-  const [showRoutineInput, setShowRoutineInput] = useState(false);
-  const [showTodoInput, setShowTodoInput] = useState(false);
+  
+  // 表示する日付（URLパラメータがあればそれを、なければ今日）
+  const displayDate = useMemo(() => {
+    return dateParam ? parseISO(dateParam) : new Date();
+  }, [dateParam]);
 
   const [progressPercent, setProgressPercent] = useState(50);
   const [wakeTime, setWakeTime] = useState("07:00");
@@ -82,8 +117,6 @@ function DailyContent() {
       if (snap.exists()) {
         const log = snap.data();
         
-        // 重要：LocalStorageに「書きかけ」のデータがない項目だけを上書き更新する
-        // これにより、自分の入力が古いデータで消されるのを完全に防ぐ
         const savedDraftStr = localStorage.getItem(getDraftKey());
         const draft = savedDraftStr ? JSON.parse(savedDraftStr) : {};
 
@@ -104,18 +137,107 @@ function DailyContent() {
     return () => unsub();
   }, [user, todayStr]);
 
-  // 個別保存処理（クラウドへ同期）
-  const saveField = async (fieldName: string, value: any) => {
+  // ルーティンとToDoの取得
+  const [routines, setRoutines] = useState<RoutineItem[]>([]);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [routinesLoaded, setRoutinesLoaded] = useState(false);
+
+  useEffect(() => {
     if (!user) return;
-    setIsSavingField(prev => ({ ...prev, [fieldName]: true }));
-    try {
-      await saveDailyLog(user.uid, todayStr, { [fieldName]: value });
+    
+    // ルーティンの同期
+    const qRoutines = query(collection(db, `users/${user.uid}/routines`), where("date", "==", todayStr));
+    const unsubRoutines = onSnapshot(qRoutines, async (snap) => {
+      let fetchedRoutines = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RoutineItem));
       
-      // クラウド保存に成功したら、LocalStorageのバックアップからその項目を消去する
+      // ルーティンが空で、今日の日付の場合のみマスタールーティンからコピー
+      if (fetchedRoutines.length === 0 && isToday(displayDate)) {
+        const masterData = await getMasterRoutines(user.uid);
+        if (masterData.length > 0) {
+          for (const m of masterData) {
+            await saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false });
+          }
+          // saveRoutineを呼ぶとonSnapshotが再発火するので、ここではセットしなくてOK
+        }
+      }
+      setRoutines(fetchedRoutines);
+      setRoutinesLoaded(true);
+    });
+
+    // ToDoの同期
+    const qTodos = query(collection(db, `users/${user.uid}/todos`), where("date", "==", todayStr));
+    const unsubTodos = onSnapshot(qTodos, (snap) => {
+      setTodos(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TodoItem)));
+    });
+
+    return () => {
+      unsubRoutines();
+      unsubTodos();
+    };
+  }, [user, todayStr, displayDate]);
+
+  // 今日の勉強時間を取得
+  useEffect(() => {
+    if (!user) return;
+    const qStudy = query(collection(db, `users/${user.uid}/studyLogs`), where("date", "==", todayStr));
+    const unsubStudy = onSnapshot(qStudy, (snap) => {
+      const total = snap.docs.reduce((acc, doc) => acc + doc.data().durationMins, 0);
+      setTodayStudyMins(total);
+    });
+    return () => unsubStudy();
+  }, [user, todayStr]);
+
+  // 今日の読書時間を取得
+  useEffect(() => {
+    if (!user) return;
+    const qReading = query(collection(db, `users/${user.uid}/readingLogs`), where("date", "==", todayStr));
+    const unsubReading = onSnapshot(qReading, (snap) => {
+      const total = snap.docs.reduce((acc, doc) => acc + doc.data().durationMins, 0);
+      setTodayReadingMins(total);
+    });
+    return () => unsubReading();
+  }, [user, todayStr]);
+
+  // 各フィールドのリアルタイム保存（LocalStorage + Debounced Remote）
+  const handleFieldChange = (field: string, value: any, setter: Function) => {
+    setter(value);
+    setIsDirty(prev => ({ ...prev, [field]: true }));
+    
+    // LocalStorageに下書き保存
+    const savedDraft = localStorage.getItem(getDraftKey());
+    const draft = savedDraft ? JSON.parse(savedDraft) : {};
+    draft[field] = value;
+    localStorage.setItem(getDraftKey(), JSON.stringify(draft));
+  };
+
+  const saveField = async (field: string, value: any) => {
+    if (!user) return;
+    setIsSavingField(prev => ({ ...prev, [field]: true }));
+    try {
+      const docRef = doc(db, `users/${user.uid}/dailyLogs`, todayStr);
+      const updateData: any = {};
+      
+      // フィールド名のマッピング（内部状態名 -> Firestore項目名）
+      const fieldMap: Record<string, string> = {
+        schedule: 'schedule',
+        diary: 'diary',
+        fulfillment: 'fulfillment',
+        wakeTime: 'wakeTime',
+        bedTime: 'bedTime',
+        dinner: 'dinner',
+        phoneTimeMins: 'phoneTimeMins'
+      };
+      
+      updateData[fieldMap[field] || field] = value;
+      updateData.updatedAt = serverTimestamp();
+      
+      await setDoc(docRef, updateData, { merge: true });
+      
+      // LocalStorageの下書きから削除
       const savedDraft = localStorage.getItem(getDraftKey());
       if (savedDraft) {
         const draft = JSON.parse(savedDraft);
-        delete draft[fieldName];
+        delete draft[field];
         if (Object.keys(draft).length === 0) {
           localStorage.removeItem(getDraftKey());
         } else {
@@ -123,83 +245,18 @@ function DailyContent() {
         }
       }
       
-      setIsDirty(prev => ({ ...prev, [fieldName]: false }));
-    } catch (err) {
-      console.error(`[Compass] Save ${fieldName} failed:`, err);
-      alert(`保存に失敗しました。バックアップはブラウザに残っています。: ${err}`);
+      setIsDirty(prev => ({ ...prev, [field]: false }));
+    } catch (e) {
+      console.error("Save failed", e);
     } finally {
-      setIsSavingField(prev => ({ ...prev, [fieldName]: false }));
+      setIsSavingField(prev => ({ ...prev, [field]: false }));
     }
   };
 
-  // 入力変更時の処理（Dirtyフラグ + LocalStorageバックアップ）
-  const handleFieldChange = (fieldName: string, value: any, setter: (v: any) => void) => {
-    setter(value);
-    setIsDirty(prev => ({ ...prev, [fieldName]: true }));
-    
-    // 即座にLocalStorageへバックアップ
-    if (user) {
-      const savedDraft = localStorage.getItem(getDraftKey());
-      const draft = savedDraft ? JSON.parse(savedDraft) : {};
-      draft[fieldName] = value;
-      localStorage.setItem(getDraftKey(), JSON.stringify(draft));
-    }
-  };
-
-  // ルーティンをFirebaseからリアルタイム取得 + 既定の同期
-  useEffect(() => {
-    if (!user) return;
-    const q = query(
-      collection(db, `users/${user.uid}/routines`),
-      where("date", "==", todayStr)
-    );
-    const unsub = onSnapshot(q, async (snap) => {
-      const dayRoutines = snap.docs.map(d => ({ id: d.id, ...d.data() } as RoutineItem));
-      
-      // もし今日のルーティンが空なら、既定のルーティンをコピーする
-      if (dayRoutines.length === 0) {
-        const masters = await getMasterRoutines(user.uid);
-        if (masters.length > 0) {
-          // Promise.allで一括保存
-          await Promise.all(masters.map(m => 
-            saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false })
-          ));
-          // onSnapshotが再度発火して更新される
-        }
-      }
-      
-      setRoutines(dayRoutines);
-    });
-    return () => unsub();
-  }, [user, todayStr]);
-
-  // 今日の読書記録をFirebaseからリアルタイム取得
-  useEffect(() => {
-    if (!user) return;
-    const qLogs = query(
-      collection(db, `users/${user.uid}/readingLogs`),
-      where("date", "==", todayStr)
-    );
-    const unsub = onSnapshot(qLogs, (snap) => {
-      let total = 0;
-      snap.forEach(doc => { total += doc.data().durationMins || 0; });
-      setTodayReadingMins(total);
-    });
-    return () => unsub();
-  }, [user, todayStr]);
-
-  // ToDoをFirebaseからリアルタイム取得
-  useEffect(() => {
-    if (!user) return;
-    const q = query(
-      collection(db, `users/${user.uid}/todos`),
-      where("date", "==", todayStr)
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setTodos(snap.docs.map(d => ({ id: d.id, ...d.data() } as TodoItem)));
-    });
-    return () => unsub();
-  }, [user, todayStr]);
+  const [showRoutineInput, setShowRoutineInput] = useState(false);
+  const [newRoutineText, setNewRoutineText] = useState("");
+  const [showTodoInput, setShowTodoInput] = useState(false);
+  const [newTodoText, setNewTodoText] = useState("");
 
   const handleAddRoutine = async () => {
     if (!user || !newRoutineText.trim()) return;
@@ -215,14 +272,28 @@ function DailyContent() {
     setShowTodoInput(false);
   };
 
-  const handleToggleRoutine = async (r: RoutineItem) => {
+  const handleUpdateRoutine = async (routine: RoutineItem, updates: Partial<RoutineItem>) => {
     if (!user) return;
-    await toggleRoutineCompletion(user.uid, r.id, !r.completed);
+    const updated = { ...routine, ...updates };
+    await saveRoutine(user.uid, { 
+      text: updated.text, 
+      date: updated.date, 
+      completed: updated.achievement ? updated.achievement >= 5 : updated.completed, 
+      achievement: updated.achievement,
+      comment: updated.comment 
+    }, routine.id);
   };
 
-  const handleToggleTodo = async (t: TodoItem) => {
+  const handleUpdateTodo = async (todo: TodoItem, updates: Partial<TodoItem>) => {
     if (!user) return;
-    await toggleTodoCompletion(user.uid, t.id, !t.completed);
+    const updated = { ...todo, ...updates };
+    await saveTodo(user.uid, { 
+      text: updated.text, 
+      date: updated.date, 
+      completed: updated.achievement ? updated.achievement >= 5 : updated.completed,
+      achievement: updated.achievement,
+      comment: updated.comment 
+    }, todo.id);
   };
 
   const handleDeleteRoutine = async (id: string) => {
@@ -251,15 +322,11 @@ function DailyContent() {
     let sleepHue = 120;
     if (durationMins < 450) {
       sleepHue = Math.max(0, 120 - ((450 - durationMins) * 1.5));
-    } else {
-      sleepHue = Math.min(260, 120 + ((durationMins - 450) * 1.2));
     }
-    
-    const baseColor = `hsl(${sleepHue} 85% 40%)`;
-    const bgColor = `hsl(${sleepHue} 85% 40% / 0.1)`;
-    const borderColor = `hsl(${sleepHue} 85% 40% / 0.3)`;
-
-    return { text: `${h}h ${m}m`, color: baseColor, bg: bgColor, border: borderColor };
+    return { 
+      text: `${h}h ${m}m`, 
+      color: `hsl(${sleepHue}, 70%, 45%)` 
+    };
   };
 
   const sleepInfo = calculateSleepDuration(bedTime, wakeTime);
@@ -289,36 +356,9 @@ function DailyContent() {
       </div>
     </div>
   );
-  
-  // 今日の学習記録をFirebaseからリアルタイム取得
-  useEffect(() => {
-    if (!user) return;
-    
-    const qLogs = query(
-      collection(db, `users/${user.uid}/studyLogs`),
-      where("date", "==", todayStr)
-    );
-    
-    const unsubscribe = onSnapshot(qLogs, (snapshot) => {
-      let total = 0;
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        total += data.durationMins || 0;
-      });
-      setTodayStudyMins(total);
-    });
-
-    return () => unsubscribe();
-  }, [user, todayStr]);
-
-  // 勉強時間の達成率計算
-  const achievementRate = targetStudyMins > 0 ? Math.floor(((todayStudyMins || 0) / targetStudyMins) * 100) : 0;
-  const clampRate = Math.min(achievementRate, 100);
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-10 animate-in fade-in zoom-in-95 duration-500 pb-24 relative">
-      {/* 個別の保存中表示は不要にし、ボタン内で表現するように変更 */}
-
+    <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-8 animate-in fade-in duration-700 pb-24">
       <header>
         <div className="flex items-end gap-3 mt-1 mb-4 flex-wrap">
           <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
@@ -361,7 +401,7 @@ function DailyContent() {
 
       {/* Routines */}
       <section>
-        <div className="mb-3">
+        <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-xl flex items-center gap-2">
             <RotateCw className="text-primary" size={22}/> 
             {dict.daily.routine}
@@ -371,26 +411,55 @@ function DailyContent() {
           </Link>
         </div>
         <div className="space-y-3">
-          {routines.map((routine) => (
-             <div 
-               key={routine.id} 
-               className={`flex items-center gap-3 p-4 rounded-xl transition-all border ${
-                 routine.completed 
-                   ? "bg-muted/30 border-transparent text-muted-foreground/60" 
-                   : "bg-white border-border shadow-sm"
-               }`}
-             >
-               <button onClick={() => handleToggleRoutine(routine)} className="shrink-0">
-                 {routine.completed ? <CheckCircle2 className="text-primary" size={22} /> : <Circle className="text-muted-foreground" size={22} />}
-               </button>
-               <span className={`flex-1 text-base leading-tight ${routine.completed ? "line-through" : "font-medium text-foreground"}`}>
-                 {routine.text}
-               </span>
-               <button onClick={() => handleDeleteRoutine(routine.id)} className="text-muted-foreground hover:text-red-500 p-1 transition-colors">
-                 <Trash2 size={16} />
-               </button>
-             </div>
-          ))}
+          {routines.map((routine) => {
+             const currentAchievement = routine.achievement || (routine.completed ? 5 : 0);
+             return (
+               <div 
+                 key={routine.id} 
+                 className={`flex flex-col gap-3 p-4 rounded-2xl transition-all border ${
+                   currentAchievement >= 1 
+                     ? "bg-primary/5 border-primary/20 shadow-sm" 
+                     : "bg-white border-border shadow-sm"
+                 }`}
+               >
+                 <div className="flex items-center gap-3">
+                   <span className="flex-1 text-base font-bold text-foreground leading-tight">
+                     {routine.text}
+                   </span>
+                   <button onClick={() => handleDeleteRoutine(routine.id)} className="text-muted-foreground hover:text-red-500 p-1 transition-colors">
+                     <Trash2 size={16} />
+                   </button>
+                 </div>
+                 
+                 <div className="flex flex-wrap items-center gap-2">
+                   {[1, 2, 3, 4, 5].map((level) => (
+                     <button
+                       key={level}
+                       onClick={() => handleUpdateRoutine(routine, { achievement: level })}
+                       className={`w-8 h-8 rounded-full text-xs font-black transition-all border-2 ${
+                         currentAchievement === level
+                           ? "bg-primary border-primary text-white scale-110 shadow-md"
+                           : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                       }`}
+                     >
+                       {level}
+                     </button>
+                   ))}
+                   <div className="ml-auto text-[10px] font-bold text-muted-foreground uppercase tracking-widest bg-muted/30 px-2 py-1 rounded italic">Level</div>
+                 </div>
+
+                 <div className="relative mt-1">
+                   <input 
+                     type="text" 
+                     value={routine.comment || ""}
+                     onChange={(e) => handleUpdateRoutine(routine, { comment: e.target.value })}
+                     placeholder="コメント・振り返り..."
+                     className="w-full bg-transparent border-b border-border/50 focus:border-primary py-1 text-xs outline-none transition-colors font-medium text-foreground/80"
+                   />
+                 </div>
+               </div>
+             );
+           })}
           {showRoutineInput ? (
             <div className="flex gap-2">
               <input
@@ -398,8 +467,8 @@ function DailyContent() {
                 value={newRoutineText}
                 onChange={e => setNewRoutineText(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleAddRoutine()}
-                placeholder="ルーティンを入力..."
-                className="flex-1 border border-border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="ルーティン名..."
+                className="flex-1 border border-border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm"
                 autoFocus
               />
               <button onClick={handleAddRoutine} className="bg-primary text-white px-4 rounded-xl font-bold text-sm">追加</button>
@@ -413,35 +482,63 @@ function DailyContent() {
         </div>
       </section>
 
-      {/* Todos */}
+      {/* Todo List */}
       <section>
         <div className="mb-3">
           <h2 className="font-semibold text-xl flex items-center gap-2">
-            <ListTodo className="text-primary" size={22}/> 
+            <CheckCircle2 className="text-primary" size={22}/> 
             {dict.daily.todo}
           </h2>
         </div>
         <div className="space-y-3">
-          {todos.map((todo) => (
-             <div 
-               key={todo.id} 
-               className={`flex items-center gap-3 p-4 rounded-xl transition-all border ${
-                 todo.completed 
-                   ? "bg-muted/30 border-transparent text-muted-foreground/60" 
-                   : "bg-white border-border shadow-sm"
-               }`}
-             >
-               <button onClick={() => handleToggleTodo(todo)} className="shrink-0">
-                 {todo.completed ? <CheckCircle2 className="text-primary" size={22} /> : <Circle className="text-muted-foreground" size={22} />}
-               </button>
-               <span className={`flex-1 text-base leading-tight ${todo.completed ? "line-through" : "font-medium text-foreground"}`}>
-                 {todo.text}
-               </span>
-               <button onClick={() => handleDeleteTodo(todo.id)} className="text-muted-foreground hover:text-red-500 p-1 transition-colors">
-                 <Trash2 size={16} />
-               </button>
-             </div>
-          ))}
+          {todos.map((todo) => {
+             const currentAchievement = todo.achievement || (todo.completed ? 5 : 0);
+             return (
+               <div 
+                 key={todo.id} 
+                 className={`flex flex-col gap-3 p-4 rounded-2xl transition-all border ${
+                   currentAchievement >= 1 
+                     ? "bg-slate-50 border-border shadow-sm text-foreground" 
+                     : "bg-white border-border shadow-sm"
+                 }`}
+               >
+                 <div className="flex items-center gap-3">
+                   <span className="flex-1 text-base font-bold text-foreground leading-tight">
+                     {todo.text}
+                   </span>
+                   <button onClick={() => handleDeleteTodo(todo.id)} className="text-muted-foreground hover:text-red-500 p-1 transition-colors">
+                     <Trash2 size={16} />
+                   </button>
+                 </div>
+
+                 <div className="flex flex-wrap items-center gap-2">
+                   {[1, 2, 3, 4, 5].map((level) => (
+                     <button
+                       key={level}
+                       onClick={() => handleUpdateTodo(todo, { achievement: level })}
+                       className={`w-8 h-8 rounded-full text-xs font-black transition-all border-2 ${
+                         currentAchievement === level
+                           ? "bg-primary border-primary text-white scale-110 shadow-md"
+                           : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                       }`}
+                     >
+                       {level}
+                     </button>
+                   ))}
+                 </div>
+
+                 <div className="relative mt-1">
+                   <input 
+                     type="text" 
+                     value={todo.comment || ""}
+                     onChange={(e) => handleUpdateTodo(todo, { comment: e.target.value })}
+                     placeholder="メモ..."
+                     className="w-full bg-transparent border-b border-border/50 focus:border-primary py-1 text-xs outline-none transition-colors font-medium text-foreground/70"
+                   />
+                 </div>
+               </div>
+             );
+           })}
           {showTodoInput ? (
             <div className="flex gap-2">
               <input
@@ -449,8 +546,8 @@ function DailyContent() {
                 value={newTodoText}
                 onChange={e => setNewTodoText(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleAddTodo()}
-                placeholder="やることを入力..."
-                className="flex-1 border border-border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="やること..."
+                className="flex-1 border border-border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm"
                 autoFocus
               />
               <button onClick={handleAddTodo} className="bg-primary text-white px-4 rounded-xl font-bold text-sm">追加</button>
@@ -464,126 +561,130 @@ function DailyContent() {
         </div>
       </section>
 
-      {/* Study Time 独立セクション (睡眠時間と入れ替え＆高度化) */}
-      <section>
-        <h2 className="font-semibold text-xl mb-3 flex items-center gap-2">
-          <BookOpen className="text-primary" size={22}/> 
-          勉強時間
-        </h2>
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-border flex flex-col gap-5">
-          {/* 目標入力 */}
-          <div className="flex items-center justify-between border-b border-border pb-4">
-            <label className="text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
-              <Flag size={16} className="text-amber-500" />
-              朝の目標
-            </label>
-            <div className="flex gap-2">
-              <div className="flex bg-muted/30 border border-border rounded-lg overflow-hidden focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-                <select 
-                  value={Math.floor(targetStudyMins / 60)} 
-                  onChange={(e) => setTargetStudyMins(Number(e.target.value) * 60 + (targetStudyMins % 60))}
-                  className="bg-transparent px-2 py-2 text-sm font-bold text-foreground outline-none appearance-none cursor-pointer"
-                >
-                  {[...Array(25)].map((_, i) => <option key={i} value={i}>{i}</option>)}
-                </select>
-                <span className="flex items-center text-[10px] text-muted-foreground pr-2 font-bold pointer-events-none select-none">h</span>
-              </div>
-              <div className="flex bg-muted/30 border border-border rounded-lg overflow-hidden focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-                <select 
-                   value={targetStudyMins % 60} 
-                   onChange={(e) => setTargetStudyMins(Math.floor(targetStudyMins / 60) * 60 + Number(e.target.value))}
-                   className="bg-transparent px-2 py-2 text-sm font-bold text-foreground outline-none appearance-none cursor-pointer"
-                >
-                  {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>)}
-                </select>
-                <span className="flex items-center text-[10px] text-muted-foreground pr-2 font-bold pointer-events-none select-none">m</span>
-              </div>
+      {/* Stats Summary */}
+      <div className="grid grid-cols-2 gap-4">
+        <Link href="/study" className="bg-white p-4 rounded-2xl border border-border shadow-sm flex flex-col gap-2 group hover:border-primary/50 transition-all">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-bold uppercase tracking-wider">{dict.daily.studyTime}</span>
+            <BarChart2 size={16} />
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="text-2xl font-black text-foreground">
+              {todayStudyMins !== null ? Math.floor(todayStudyMins / 60) : "0"}
+            </span>
+            <span className="text-xs font-bold text-muted-foreground">h</span>
+            <span className="text-2xl font-black text-foreground ml-1">
+              {todayStudyMins !== null ? todayStudyMins % 60 : "0"}
+            </span>
+            <span className="text-xs font-bold text-muted-foreground">m</span>
+          </div>
+        </Link>
+
+        <Link href="/reading" className="bg-white p-4 rounded-2xl border border-border shadow-sm flex flex-col gap-2 group hover:border-primary/50 transition-all">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-bold uppercase tracking-wider">{dict.daily.readingTime}</span>
+            <BookOpen size={16} />
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="text-2xl font-black text-foreground">
+              {todayReadingMins !== null ? Math.floor(todayReadingMins / 60) : "0"}
+            </span>
+            <span className="text-xs font-bold text-muted-foreground">h</span>
+            <span className="text-2xl font-black text-foreground ml-1">
+              {todayReadingMins !== null ? todayReadingMins % 60 : "0"}
+            </span>
+            <span className="text-xs font-bold text-muted-foreground">m</span>
+          </div>
+        </Link>
+      </div>
+
+      {/* Fulfillment slider */}
+      <section className="bg-white p-6 rounded-3xl border border-border shadow-sm space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <h2 className="font-bold text-lg text-foreground">{dict.daily.fulfillment}</h2>
+            <p className="text-xs text-muted-foreground font-medium">1日の満足度を直感的に記録しましょう</p>
+          </div>
+          <div 
+            className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg transition-all"
+            style={{ backgroundColor: progressColor }}
+          >
+            {progressPercent}%
+          </div>
+        </div>
+        
+        <div className="space-y-4">
+          <input 
+            type="range" 
+            min="0" 
+            max="100" 
+            value={progressPercent} 
+            onChange={e => handleFieldChange('fulfillment', Number(e.target.value), setProgressPercent)}
+            onBlur={() => saveField('fulfillment', progressPercent)}
+            className="w-full h-2 bg-muted rounded-full appearance-none outline-none cursor-pointer accent-primary"
+            style={{ accentColor: progressColor }}
+          />
+          <div className="flex justify-between text-[10px] font-black text-muted-foreground uppercase tracking-widest px-1">
+             <span>Low</span>
+             <span>Ordinary</span>
+             <span>Excellent</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Sleep Tracker */}
+      <section className="bg-white rounded-3xl border border-border shadow-sm overflow-hidden">
+        <button 
+          onClick={() => setIsSleepExpanded(!isSleepExpanded)}
+          className="w-full p-5 flex items-center justify-between hover:bg-muted/30 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+              <Clock size={22} />
+            </div>
+            <div className="text-left">
+              <h2 className="font-bold text-foreground">{dict.daily.sleepAndWake}</h2>
+              <p className="text-xs text-muted-foreground font-medium">目標：7時間30分以上</p>
             </div>
           </div>
-
-          {/* 実績と達成率 */}
-          <div className="flex items-end justify-between px-1">
-            <Link href="/study" className="flex flex-col group cursor-pointer">
-              <span className="text-[11px] font-bold text-primary/80 mb-1 flex items-center gap-1 uppercase tracking-wider">
-                現在実績 (タップで個別入力) <ChevronRight size={12}/>
-              </span>
-              <div className="text-4xl font-extrabold text-foreground group-hover:text-primary transition-colors flex items-baseline gap-1">
-                {todayStudyMins === null ? (
-                  <span className="text-xl animate-pulse text-muted-foreground">計算中...</span>
-                ) : (
-                  <>
-                    {Math.floor(todayStudyMins / 60)}<span className="text-lg font-bold">h</span> {todayStudyMins % 60}<span className="text-lg font-bold">m</span>
-                  </>
-                )}
-              </div>
-            </Link>
-            
-            <div className="text-right flex flex-col items-end">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">達成率</span>
-              <span 
-                className="text-3xl font-black italic tracking-tighter"
-                style={{ color: achievementRate >= 100 ? '#8b5cf6' : 'var(--primary)' }}
-              >
-                {achievementRate}%
-              </span>
-            </div>
+          <div className="flex items-center gap-3">
+             <div className="text-right">
+                <p className="text-lg font-black text-foreground">{sleepInfo.text}</p>
+                <p className="text-[10px] font-bold uppercase tracking-tighter" style={{ color: sleepInfo.color }}>Healthy range</p>
+             </div>
+             <ChevronRight className={`text-muted-foreground transition-transform ${isSleepExpanded ? "rotate-90" : ""}`} size={20} />
           </div>
-
-          {/* プログレスプロット */}
-          <div className="space-y-2">
-            <div className="h-3 w-full bg-muted/60 rounded-full overflow-hidden relative shadow-inner">
-              <div 
-                className="absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ease-out"
-                style={{ 
-                  width: `${clampRate}%`, 
-                  backgroundImage: achievementRate >= 100 
-                    ? 'linear-gradient(to right, #6366f1, #a855f7, #ec4899)' // 100%超えは鮮やかなグラデ
-                    : 'linear-gradient(to right, #93c5fd, #3b82f6)', // 青色のグラデーション
-                }}
+        </button>
+        
+        {isSleepExpanded && (
+          <div className="p-5 pt-0 border-t border-border/50 grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-300">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5"><Clock size={12}/> {dict.daily.wakeTime}</label>
+              <input 
+                type="time" 
+                value={wakeTime}
+                onChange={e => handleFieldChange("wakeTime", e.target.value, setWakeTime)}
+                onBlur={() => saveField("wakeTime", wakeTime)}
+                className="w-full bg-background border border-border rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
-            {achievementRate >= 100 && (
-              <p className="text-xs text-right font-bold text-purple-500 animate-in fade-in slide-in-from-bottom-1">
-                🎉 目標達成おめでとうございます！
-              </p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Reading Time Section */}
-      <section>
-        <h2 className="font-semibold text-xl mb-3 flex items-center gap-2">
-          <BookOpen className="text-primary" size={22}/> 
-          {dict.daily.readingTime}
-        </h2>
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-border flex flex-col gap-4">
-          <div className="flex items-end justify-between px-1">
-            <Link href="/reading" className="flex flex-col group cursor-pointer">
-              <span className="text-[11px] font-bold text-primary/80 mb-1 flex items-center gap-1 uppercase tracking-wider">
-                {dict.daily.readingTracker} <ChevronRight size={12}/>
-              </span>
-              <div className="text-4xl font-extrabold text-foreground group-hover:text-primary transition-colors flex items-baseline gap-1">
-                {todayReadingMins === null ? (
-                  <span className="text-xl animate-pulse text-muted-foreground">読み込み中...</span>
-                ) : (
-                  <>
-                    {Math.floor(todayReadingMins / 60)}<span className="text-lg font-bold">h</span> {todayReadingMins % 60}<span className="text-lg font-bold">m</span>
-                  </>
-                )}
-              </div>
-            </Link>
-            
-            <div className="bg-primary/5 p-3 rounded-2xl">
-               <BookOpen size={24} className="text-primary opacity-40" />
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5"><Clock size={12}/> {dict.daily.bedTime}</label>
+              <input 
+                type="time" 
+                value={bedTime}
+                onChange={e => handleFieldChange("bedTime", e.target.value, setBedTime)}
+                onBlur={() => saveField("bedTime", bedTime)}
+                className="w-full bg-background border border-border rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+              />
             </div>
           </div>
-        </div>
+        )}
       </section>
 
-      {/* Evening Reflection & Diary */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
+      {/* Evening Reflection & Extras */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
           <h2 className="font-semibold text-xl flex items-center gap-2">
             <Edit3 className="text-primary" size={22}/> 
             {dict.daily.reflection}
@@ -634,108 +735,7 @@ function DailyContent() {
             ></textarea>
           </div>
         </div>
-      </section>
-
-      {/* Sleep & Wake (入れ替え＆アコーディオン化) */}
-      <section>
-        <div 
-          onClick={() => setIsSleepExpanded(!isSleepExpanded)}
-          className={`bg-white rounded-2xl shadow-sm border transition-all cursor-pointer select-none
-            ${isSleepExpanded ? "border-primary/40 ring-2 ring-primary/10 p-5" : "border-border hover:border-primary/30 p-4"}
-          `}
-        >
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-lg flex items-center gap-2 text-foreground">
-              <Moon className="text-primary" size={20}/> 
-              睡眠時間
-            </h2>
-            <div className="flex items-center gap-3">
-              <span className="font-bold border px-3 py-1 rounded-lg text-sm" style={{ color: sleepInfo.color, borderColor: sleepInfo.border, backgroundColor: sleepInfo.bg }}>
-                {sleepInfo.text}
-              </span>
-              <div className={`p-1 rounded-full hover:bg-muted transition-colors ${isSleepExpanded ? "bg-muted" : ""}`}>
-                <ChevronDown size={18} className={`text-muted-foreground transition-transform duration-300 ${isSleepExpanded ? "rotate-180" : ""}`} />
-              </div>
-            </div>
-          </div>
-
-          {/* 展開される入力エリア */}
-          <div className={`grid transition-all duration-300 ease-in-out ${isSleepExpanded ? "grid-rows-[1fr] opacity-100 mt-5 pt-5 border-t border-border" : "grid-rows-[0fr] opacity-0"}`}>
-            <div className="overflow-hidden">
-               <div className="flex flex-col sm:flex-row gap-5">
-                 <div className="space-y-1.5 flex-1">
-                   <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Sun size={14}/> {dict.daily.wakeTime}</label>
-                   <input 
-                     type="time" 
-                     value={wakeTime} 
-                     step="300"
-                     onChange={(e) => handleFieldChange('wakeTime', e.target.value, setWakeTime)}
-                     className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground cursor-pointer" 
-                   />
-                 </div>
-                 <div className="space-y-1.5 flex-1">
-                   <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Moon size={14}/> {dict.daily.bedTime}</label>
-                   <input 
-                     type="time" 
-                     value={bedTime} 
-                     step="300"
-                     onChange={(e) => handleFieldChange('bedTime', e.target.value, setBedTime)}
-                     className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground cursor-pointer" 
-                   />
-                 </div>
-               </div>
-               {(isDirty.wakeTime || isDirty.bedTime) && (
-                 <button 
-                   onClick={async () => {
-                     if (isDirty.wakeTime) await saveField('wakeTime', wakeTime);
-                     if (isDirty.bedTime) await saveField('bedTime', bedTime);
-                   }}
-                   className="w-full mt-4 py-2 bg-primary text-white rounded-xl text-xs font-bold transition-all"
-                 >
-                   睡眠時間を保存
-                 </button>
-               )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Manual Fulfillment Slider */}
-      <section className="bg-white p-5 rounded-2xl shadow-sm border border-border transition-all">
-        <label htmlFor="fulfillment-slider" className="flex justify-between items-end mb-4 cursor-pointer">
-          <h2 className="font-semibold text-xl text-foreground tracking-tight">{dict.daily.fulfillment}</h2>
-          <span className="font-bold text-3xl" style={{ color: progressColor }}>{progressPercent}%</span>
-        </label>
-        
-        <input 
-          id="fulfillment-slider"
-          type="range" 
-          min="0" 
-          max="100" 
-          value={progressPercent}
-          onChange={(e) => setProgressPercent(Number(e.target.value))}
-          onMouseUp={() => saveField('fulfillment', progressPercent)}
-          onTouchEnd={() => saveField('fulfillment', progressPercent)}
-          style={{ 
-            backgroundImage: `linear-gradient(to right, ${progressColor} ${progressPercent}%, var(--muted) ${progressPercent}%)` 
-          }}
-          className="w-full h-4 bg-muted rounded-full appearance-none outline-none cursor-pointer transition-all duration-300 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border-2 hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125"
-        />
-        <style jsx>{`
-          input[type=range]::-webkit-slider-thumb {
-            border-color: ${progressColor};
-          }
-        `}</style>
-      </section>
-      
+      </div>
     </div>
   );
-}
-
-export default function DailyPage() {
-  return (
-    <Suspense fallback={<div className="p-10 text-center animate-pulse">Loading...</div>}>
-      <DailyContent />
-    </Suspense>
-  )
 }

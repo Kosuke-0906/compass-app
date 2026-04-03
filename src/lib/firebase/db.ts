@@ -227,12 +227,14 @@ export const toggleGoalCompletion = async (userId: string, goalId: string, isCom
 export interface RoutineItem {
   id: string;
   text: string;
-  completed: boolean;
+  completed: boolean; // Keep for backward compatibility, but we'll use achievement
+  achievement?: number; // 1-5
+  comment?: string;
   date: string; // YYYY-MM-DD
   createdAt: Timestamp | FieldValue | null;
 }
 
-export const saveRoutine = async (userId: string, routine: { text: string; date: string; completed: boolean }, routineId?: string) => {
+export const saveRoutine = async (userId: string, routine: { text: string; date: string; completed: boolean; achievement?: number; comment?: string }, routineId?: string) => {
   if (!userId) throw new Error("No user ID");
   const ref = routineId
     ? doc(db, `users/${userId}/routines`, routineId)
@@ -259,11 +261,13 @@ export interface TodoItem {
   id: string;
   text: string;
   completed: boolean;
+  achievement?: number; // 1-5
+  comment?: string;
   date: string; // YYYY-MM-DD
   createdAt: Timestamp | FieldValue | null;
 }
 
-export const saveTodo = async (userId: string, todo: { text: string; date: string; completed: boolean }, todoId?: string) => {
+export const saveTodo = async (userId: string, todo: { text: string; date: string; completed: boolean; achievement?: number; comment?: string }, todoId?: string) => {
   if (!userId) throw new Error("No user ID");
   const ref = todoId
     ? doc(db, `users/${userId}/todos`, todoId)

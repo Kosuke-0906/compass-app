@@ -41,6 +41,19 @@ export default function ReadingPage() {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Book));
       setBooks(data);
       setLoading(false);
+      
+      // Sync localProgress: If server value matches local intent, clear the local intent
+      setLocalProgress(prev => {
+        const next = { ...prev };
+        let changed = false;
+        data.forEach(book => {
+          if (next[book.id] !== undefined && next[book.id] === book.progress) {
+            delete next[book.id];
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
     });
     return () => unsub();
   }, [user]);
@@ -183,11 +196,7 @@ export default function ReadingPage() {
                       onChange={(e) => setLocalProgress(prev => ({ ...prev, [book.id]: Number(e.target.value) }))}
                       onPointerUp={() => {
                         handleUpdateProgress(book, localProgress[book.id] ?? book.progress);
-                        setLocalProgress(prev => {
-                          const next = { ...prev };
-                          delete next[book.id];
-                          return next;
-                        });
+                        // Don't delete immediately; wait for onSnapshot to confirm sync
                       }}
                       className="w-full h-2 bg-muted rounded-full appearance-none outline-none cursor-pointer accent-primary"
                     />
