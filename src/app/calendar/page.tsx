@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { useLanguage } from "@/context/LanguageContext";
-import { CalendarDays, Target, Flag, Mountain } from "lucide-react";
+import { CalendarDays, Target, Flag, Mountain, Plus } from "lucide-react";
 import { ja, enUS } from "date-fns/locale";
 
 export default function CalendarPage() {
@@ -133,43 +134,14 @@ export default function CalendarPage() {
         </h2>
         
         <div className="space-y-4">
-          {/* Mock Year Goal for that year */}
-          <div className="p-4 rounded-xl border border-border shadow-sm flex items-start gap-3 bg-primary/5">
-            <Target className="text-primary mt-0.5" size={18}/>
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground font-semibold mb-1">{format(viewMonth, 'yyyy')}年の目標</p>
-              <p className="font-bold text-base text-foreground leading-tight">
-                {isCurrentMonth ? "副業月収5万円を安定させる" : "HTML/CSSをマスターする"}
-              </p>
-              {!isCurrentMonth && <p className="text-sm mt-2 text-muted-foreground bg-white p-2 rounded border">達成率: 80% 「基礎は固まった！」</p>}
-            </div>
+          <div className="text-center p-8 border border-dashed rounded-2xl border-border bg-muted/5">
+            <p className="text-sm text-muted-foreground font-medium mb-3">
+              {language === 'ja' ? '目標が設定されていません' : 'No goals set for this period'}
+            </p>
+            <Link href="/goals" className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-full text-xs font-bold hover:bg-primary/90 transition-all shadow-sm">
+               <Plus size={14} /> {language === 'ja' ? '目標を設定する' : 'Set a Goal'}
+            </Link>
           </div>
-
-          {/* Mock Month Goal for that month */}
-          <div className="p-4 rounded-xl border border-border shadow-sm flex items-start gap-3">
-            <Flag className="text-amber-500 mt-0.5" size={18}/>
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground font-semibold mb-1">{format(viewMonth, 'M')}月の目標</p>
-              <p className="font-bold text-base text-foreground leading-tight">
-                {isCurrentMonth ? "ブログを10記事書く" : "参考書を1冊終わらせる"}
-              </p>
-              {!isCurrentMonth && <p className="text-sm mt-2 text-muted-foreground bg-muted/50 p-2 rounded">達成率: 100% 「やりきった！自信がつきました。」</p>}
-            </div>
-          </div>
-
-          {/* Mock Targets ending in that month (Only mock an example for past months) */}
-          {!isCurrentMonth && viewMonth.getMonth() % 2 === 0 && (
-             <div className="p-4 rounded-xl border border-border shadow-sm flex items-start gap-3">
-               <Mountain className="text-purple-500 mt-0.5" size={18}/>
-               <div className="flex-1">
-                 <p className="text-xs text-muted-foreground font-semibold mb-1">この月を期限としたTarget</p>
-                 <p className="font-bold text-base text-foreground leading-tight">
-                   TOEIC 800点取得
-                 </p>
-                 <p className="text-sm mt-2 text-muted-foreground bg-muted/50 p-2 rounded">未達成: 720点でした。来年リベンジ！</p>
-               </div>
-             </div>
-          )}
         </div>
         
       </section>
