@@ -324,13 +324,13 @@ function DailyContent() {
 
   const renderTimeSelectors = (mins: number, onChange: (newMins: number) => void) => (
     <div className="flex gap-2">
-      <div className="flex bg-background border border-gray-100 rounded-lg overflow-hidden">
+      <div className="flex bg-background border border-border rounded-lg overflow-hidden">
         <select value={Math.floor(mins / 60)} onChange={(e) => onChange(Number(e.target.value) * 60 + (mins % 60))} className="bg-transparent px-2 py-2 text-sm">
           {[...Array(25)].map((_, i) => <option key={i} value={i}>{i}</option>)}
         </select>
         <span className="text-[10px] flex items-center pr-1 opacity-50">h</span>
       </div>
-      <div className="flex bg-background border border-gray-100 rounded-lg overflow-hidden">
+      <div className="flex bg-background border border-border rounded-lg overflow-hidden">
         <select value={mins % 60} onChange={(e) => onChange(Math.floor(mins / 60) * 60 + Number(e.target.value))} className="bg-transparent px-2 py-2 text-sm">
           {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>)}
         </select>
@@ -346,7 +346,7 @@ function DailyContent() {
           <h1 className="text-3xl font-extrabold text-foreground tracking-tight">{dict.daily.title}</h1>
           <span className="text-lg text-muted-foreground font-semibold pb-0.5">{format(displayDate, "MM/dd (E)")}</span>
         </div>
-        <Link href="/calendar" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-full text-xs font-bold text-muted-foreground shadow-sm">
+        <Link href="/calendar" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-border rounded-full text-xs font-bold text-muted-foreground shadow-sm">
           <CalendarDays size={14} /> {dict.daily.selectAnotherDay}
         </Link>
       </header>
@@ -357,21 +357,21 @@ function DailyContent() {
           <h2 className="font-bold text-xl flex items-center gap-2"><CalendarClock className="text-primary" size={22}/> {dict.daily.todaySchedule}</h2>
           {isDirty.schedule && <button onClick={() => saveField('schedule', schedule)} className="bg-primary text-white px-3 py-1 rounded-full text-xs font-bold">保存</button>}
         </div>
-        <textarea value={schedule} onChange={e => handleFieldChange('schedule', e.target.value, setSchedule)} placeholder={dict.daily.todaySchedulePlaceholder} className="w-full h-24 bg-white border border-gray-100 rounded-xl p-4 resize-none text-sm shadow-sm"></textarea>
+        <textarea value={schedule} onChange={e => handleFieldChange('schedule', e.target.value, setSchedule)} placeholder={dict.daily.todaySchedulePlaceholder} className="w-full h-24 bg-white border border-border rounded-xl p-4 resize-none text-sm"></textarea>
       </section>
 
       {/* Routines */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-bold text-xl flex items-center gap-2"><RotateCw className="text-primary" size={22}/> {dict.daily.routine}</h2>
-          <Link href="/settings/routines" className="text-xs font-bold text-primary px-3 py-1.5 rounded-full border border-gray-100">{dict.daily.manageRoutines}</Link>
+          <Link href="/settings/routines" className="text-xs font-bold text-primary px-3 py-1.5 rounded-full border border-primary/20">{dict.daily.manageRoutines}</Link>
         </div>
         <div className="space-y-3">
           {routines.map((routine) => {
             const currentLevel = routine.achievement || (routine.completed ? 5 : 1);
             const isExpanded = expandedRoutineId === routine.id;
             return (
-              <div key={routine.id} className={`flex flex-col gap-3 p-4 rounded-2xl border border-gray-100 transition-all shadow-sm ${isExpanded ? "bg-primary/[0.02]" : "bg-white"}`}>
+              <div key={routine.id} className={`flex flex-col gap-3 p-4 rounded-2xl border transition-all shadow-sm ${isExpanded ? "bg-primary/[0.02]" : "bg-white"}`}>
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => setExpandedRoutineId(isExpanded ? null : routine.id)}>
                   <span className={`flex-1 text-base font-bold ${!isExpanded ? "truncate" : ""}`}>{routine.text}</span>
                   {!isExpanded && <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white ${getAchievementColor(currentLevel)}`}>{currentLevel}</div>}
@@ -380,11 +380,11 @@ function DailyContent() {
                 {isExpanded && (
                   <div className="space-y-4 pt-2 animate-in slide-in-from-top-2">
                     <div className="flex flex-wrap gap-2">
-                       {[1,2,3,4,5].map(lv => (
-                         <button key={lv} onClick={() => { handleUpdateRoutine(routine, { achievement: lv }); setExpandedRoutineId(null); }} className={`w-9 h-9 rounded-full text-xs font-black border-2 transition-all ${currentLevel === lv ? "text-white " + getAchievementColor(lv) + " border-transparent" : "bg-white text-muted-foreground border-gray-100"}`}>{lv}</button>
-                       ))}
+                      {[1,2,3,4,5].map(lv => (
+                        <button key={lv} onClick={() => { handleUpdateRoutine(routine, { achievement: lv }); setExpandedRoutineId(null); }} className={`w-9 h-9 rounded-full text-xs font-black border-2 ${currentLevel === lv ? "text-white " + getAchievementColor(lv) : "bg-white text-muted-foreground border-border"}`}>{lv}</button>
+                      ))}
                     </div>
-                    <input type="text" value={routine.comment || ""} onChange={e => handleUpdateRoutine(routine, { comment: e.target.value })} placeholder="メモ..." className="w-full bg-transparent border-b border-gray-100 py-1 text-xs outline-none font-medium" />
+                    <input type="text" value={routine.comment || ""} onChange={e => handleUpdateRoutine(routine, { comment: e.target.value })} placeholder="メモ..." className="w-full bg-transparent border-b border-border/40 py-1 text-xs outline-none font-medium" />
                   </div>
                 )}
               </div>
@@ -392,7 +392,7 @@ function DailyContent() {
           })}
           {showRoutineInput ? (
             <div className="flex gap-2">
-              <input type="text" value={newRoutineText} onChange={e => setNewRoutineText(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddRoutine()} placeholder="ルーティン名..." className="flex-1 border border-gray-100 rounded-xl p-3 text-sm shadow-sm" autoFocus />
+              <input type="text" value={newRoutineText} onChange={e => setNewRoutineText(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddRoutine()} placeholder="ルーティン名..." className="flex-1 border rounded-xl p-3 text-sm" autoFocus />
               <button onClick={handleAddRoutine} className="bg-primary text-white px-4 rounded-xl font-bold text-sm">追加</button>
             </div>
           ) : (
@@ -409,7 +409,7 @@ function DailyContent() {
             const currentLevel = todo.achievement || (todo.completed ? 5 : 1);
             const isExpanded = expandedTodoId === todo.id;
             return (
-              <div key={todo.id} className={`flex flex-col gap-3 p-4 rounded-2xl border border-gray-100 transition-all shadow-sm ${isExpanded ? "bg-slate-50" : "bg-white"}`}>
+              <div key={todo.id} className={`flex flex-col gap-3 p-4 rounded-2xl border transition-all shadow-sm ${isExpanded ? "bg-slate-50" : "bg-white"}`}>
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => setExpandedTodoId(isExpanded ? null : todo.id)}>
                   <span className={`flex-1 text-base font-bold ${!isExpanded ? "truncate" : ""}`}>{todo.text}</span>
                   {!isExpanded && <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white ${getAchievementColor(currentLevel)}`}>{currentLevel}</div>}
@@ -419,10 +419,10 @@ function DailyContent() {
                   <div className="space-y-4 pt-2 animate-in slide-in-from-top-2">
                     <div className="flex flex-wrap gap-2">
                       {[1,2,3,4,5].map(lv => (
-                        <button key={lv} onClick={() => { handleUpdateTodo(todo, { achievement: lv }); setExpandedTodoId(null); }} className={`w-9 h-9 rounded-full text-xs font-black border-2 transition-all ${currentLevel === lv ? "text-white " + getAchievementColor(lv) + " border-transparent" : "bg-white text-muted-foreground border-gray-100"}`}>{lv}</button>
+                        <button key={lv} onClick={() => { handleUpdateTodo(todo, { achievement: lv }); setExpandedTodoId(null); }} className={`w-9 h-9 rounded-full text-xs font-black border-2 ${currentLevel === lv ? "text-white " + getAchievementColor(lv) : "bg-white text-muted-foreground border-border"}`}>{lv}</button>
                       ))}
                     </div>
-                    <input type="text" value={todo.comment || ""} onChange={e => handleUpdateTodo(todo, { comment: e.target.value })} placeholder="メモ..." className="w-full bg-transparent border-b border-gray-100 py-1 text-xs outline-none font-medium" />
+                    <input type="text" value={todo.comment || ""} onChange={e => handleUpdateTodo(todo, { comment: e.target.value })} placeholder="メモ..." className="w-full bg-transparent border-b border-border/40 py-1 text-xs outline-none font-medium" />
                   </div>
                 )}
               </div>
@@ -430,7 +430,7 @@ function DailyContent() {
           })}
           {showTodoInput ? (
             <div className="flex gap-2">
-              <input type="text" value={newTodoText} onChange={e => setNewTodoText(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddTodo()} placeholder="やること..." className="flex-1 border border-gray-100 rounded-xl p-3 text-sm shadow-sm" autoFocus />
+              <input type="text" value={newTodoText} onChange={e => setNewTodoText(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddTodo()} placeholder="やること..." className="flex-1 border rounded-xl p-3 text-sm" autoFocus />
               <button onClick={handleAddTodo} className="bg-primary text-white px-4 rounded-xl font-bold text-sm">追加</button>
             </div>
           ) : (
@@ -441,30 +441,26 @@ function DailyContent() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4">
-        <Link href="/study" className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-2">
-          <div className="flex justify-between items-center text-muted-foreground"><span className="text-[10px] font-bold uppercase tracking-wider">{dict.daily.studyTime}</span><BarChart2 size={14} /></div>
-          <div className="flex items-baseline gap-1 font-black text-xl">
-             {Math.floor((todayStudyMins || 0) / 60)}<span className="text-[10px]">h</span> {(todayStudyMins || 0) % 60}<span className="text-[10px]">m</span>
-          </div>
+        <Link href="/study" className="bg-white p-4 rounded-2xl border flex flex-col gap-2">
+          <div className="flex justify-between items-center text-muted-foreground"><span className="text-[10px] font-bold uppercase">{dict.daily.studyTime}</span><BarChart2 size={14} /></div>
+          <div className="flex items-baseline gap-1 font-black text-xl">{Math.floor(todayStudyMins || 0 / 60)}h {todayStudyMins || 0 % 60}m</div>
         </Link>
-        <Link href="/reading" className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-2">
-          <div className="flex justify-between items-center text-muted-foreground"><span className="text-[10px] font-bold uppercase tracking-wider">{dict.daily.readingTime}</span><BookOpen size={14} /></div>
-          <div className="flex items-baseline gap-1 font-black text-xl">
-             {Math.floor((todayReadingMins || 0) / 60)}<span className="text-[10px]">h</span> {(todayReadingMins || 0) % 60}<span className="text-[10px]">m</span>
-          </div>
+        <Link href="/reading" className="bg-white p-4 rounded-2xl border flex flex-col gap-2">
+          <div className="flex justify-between items-center text-muted-foreground"><span className="text-[10px] font-bold uppercase">{dict.daily.readingTime}</span><BookOpen size={14} /></div>
+          <div className="flex items-baseline gap-1 font-black text-xl">{Math.floor(todayReadingMins || 0 / 60)}h {todayReadingMins || 0 % 60}m</div>
         </Link>
       </div>
 
       {/* Sleep */}
-      <section className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-        <button onClick={() => setIsSleepExpanded(!isSleepExpanded)} className="w-full p-5 flex items-center justify-between hover:bg-gray-50 transition-colors">
+      <section className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+        <button onClick={() => setIsSleepExpanded(!isSleepExpanded)} className="w-full p-5 flex items-center justify-between">
           <div className="flex items-center gap-3"><div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><Clock size={20} /></div><div><h2 className="font-bold text-sm">{dict.daily.sleepAndWake}</h2></div></div>
           <div className="flex items-center gap-3 text-right"><div><p className="font-black">{sleepInfo.text}</p><p className="text-[10px] font-bold" style={{ color: sleepInfo.color }}>Healthy</p></div><ChevronRight className={`transition-transform ${isSleepExpanded ? "rotate-90" : ""}`} size={16} /></div>
         </button>
         {isSleepExpanded && (
-          <div className="p-5 pt-0 border-t border-gray-50 grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
-            <div><label className="text-[10px] font-bold opacity-50 block mb-1">起床</label><input type="time" value={wakeTime} onChange={e => handleFieldChange("wakeTime", e.target.value, setWakeTime)} onBlur={() => saveField("wakeTime", wakeTime)} className="w-full p-2 border border-gray-100 rounded-xl text-sm font-bold shadow-sm" /></div>
-            <div><label className="text-[10px] font-bold opacity-50 block mb-1">就寝</label><input type="time" value={bedTime} onChange={e => handleFieldChange("bedTime", e.target.value, setBedTime)} onBlur={() => saveField("bedTime", bedTime)} className="w-full p-2 border border-gray-100 rounded-xl text-sm font-bold shadow-sm" /></div>
+          <div className="p-5 pt-0 border-t grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
+            <div><label className="text-[10px] font-bold opacity-50 block mb-1">起床</label><input type="time" value={wakeTime} onChange={e => handleFieldChange("wakeTime", e.target.value, setWakeTime)} onBlur={() => saveField("wakeTime", wakeTime)} className="w-full p-2 border rounded-xl text-sm font-bold" /></div>
+            <div><label className="text-[10px] font-bold opacity-50 block mb-1">就寝</label><input type="time" value={bedTime} onChange={e => handleFieldChange("bedTime", e.target.value, setBedTime)} onBlur={() => saveField("bedTime", bedTime)} className="w-full p-2 border rounded-xl text-sm font-bold" /></div>
           </div>
         )}
       </section>
@@ -473,32 +469,32 @@ function DailyContent() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-bold text-xl flex items-center gap-2"><Edit3 className="text-primary" size={22}/> {dict.daily.reflection}</h2>
-          {(isDirty.diary || isDirty.dinner || isDirty.phoneTimeMins) && <button onClick={async () => { if (isDirty.diary) await saveField('diary', diary); if (isDirty.dinner) await saveField('dinner', dinner); if (isDirty.phoneTimeMins) await saveField('phoneTimeMins', phoneTimeMins); }} className="bg-primary text-white px-3 py-1 rounded-full text-xs font-bold shadow-md">保存</button>}
+          {(isDirty.diary || isDirty.dinner || isDirty.phoneTimeMins) && <button onClick={async () => { if (isDirty.diary) await saveField('diary', diary); if (isDirty.dinner) await saveField('dinner', dinner); if (isDirty.phoneTimeMins) await saveField('phoneTimeMins', phoneTimeMins); }} className="bg-primary text-white px-3 py-1 rounded-full text-xs font-bold">保存</button>}
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 space-y-4 shadow-sm">
+        <div className="bg-white p-5 rounded-2xl border space-y-4 shadow-sm">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1"><label className="text-[10px] font-bold opacity-50 flex items-center gap-1"><Smartphone size={10}/> {dict.daily.phoneTime}</label>{renderTimeSelectors(phoneTimeMins, val => handleFieldChange("phoneTimeMins", val, setPhoneTimeMins))}</div>
-            <div className="space-y-1"><label className="text-[10px] font-bold opacity-50 flex items-center gap-1"><Utensils size={10}/> {dict.daily.dinner}</label><input type="text" value={dinner} onChange={e => handleFieldChange('dinner', e.target.value, setDinner)} placeholder="..." className="w-full bg-gray-50 border border-gray-100 rounded-lg p-2 text-sm outline-none font-medium" /></div>
+            <div className="space-y-1"><label className="text-[10px] font-bold opacity-50 flex items-center gap-1"><Utensils size={10}/> {dict.daily.dinner}</label><input type="text" value={dinner} onChange={e => handleFieldChange('dinner', e.target.value, setDinner)} placeholder="..." className="w-full bg-muted/20 border-border rounded-lg p-2 text-sm outline-none" /></div>
           </div>
-          <div className="pt-2"><label className="text-[10px] font-bold opacity-50 block mb-1">{dict.daily.diary}</label><textarea value={diary} onChange={e => handleFieldChange('diary', e.target.value, setDiary)} className="w-full h-32 bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm resize-none outline-none"></textarea></div>
+          <div className="pt-2"><label className="text-[10px] font-bold opacity-50 block mb-1">{dict.daily.diary}</label><textarea value={diary} onChange={e => handleFieldChange('diary', e.target.value, setDiary)} className="w-full h-32 bg-muted/10 border p-3 rounded-xl text-sm resize-none"></textarea></div>
         </div>
       </div>
 
       {/* Fulfillment Summary (VERY BOTTOM) */}
-      <section className="bg-white p-6 rounded-3xl border border-gray-100 shadow-xl space-y-4 animate-in slide-in-from-bottom-4 duration-700">
+      <section className="bg-white p-6 rounded-3xl border border-border shadow-xl space-y-4 animate-in slide-in-from-bottom-4 duration-700">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <h2 className="font-black text-xl text-foreground tracking-tight">{dict.daily.fulfillment}</h2>
             <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Calculated from routines & todos</p>
           </div>
-          <div className="w-16 h-16 rounded-3xl flex items-center justify-center text-white font-black text-2xl shadow-xl transition-all scale-110" style={{ backgroundColor: `hsl(${220 - (progressPercent * 2.2)}, 80%, 65%)` }}>
+          <div className="w-16 h-16 rounded-3xl flex items-center justify-center text-white font-black text-2xl shadow-2xl transition-all scale-110" style={{ backgroundColor: `hsl(${220 - (progressPercent * 2.2)}, 80%, 65%)` }}>
             {progressPercent}%
           </div>
         </div>
-        <div className="relative h-6 bg-gray-50 rounded-full overflow-hidden border border-gray-100">
+        <div className="relative h-6 bg-muted rounded-full overflow-hidden border border-border/50">
           <div className="h-full transition-all duration-1000 ease-out" style={{ width: `${progressPercent}%`, backgroundColor: `hsl(${220 - (progressPercent * 2.2)}, 80%, 65%)` }} />
-          <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-foreground/40 pointer-events-none uppercase tracking-widest">
-            {progressPercent < 50 ? "Keep going!" : progressPercent < 80 ? "Good Job" : "Excellent!"}
+          <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-foreground/50 pointer-events-none uppercase tracking-widest">
+            {progressPercent < 50 ? "Work harder!" : progressPercent < 80 ? "Good Job" : "Excellent Day!"}
           </div>
         </div>
       </section>
