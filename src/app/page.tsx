@@ -39,62 +39,108 @@ function DailyContent() {
   const [targetStudyMins, setTargetStudyMins] = useState(120);
   const [todayStudyMins, setTodayStudyMins] = useState<number | null>(null);
   const [dailyLogLoaded, setDailyLogLoaded] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSavingField, setIsSavingField] = useState<Record<string, boolean>>({});
+  const [isDirty, setIsDirty] = useState<Record<string, boolean>>({});
 
   const { user } = useAuth();
   const todayStr = format(displayDate, "yyyy-MM-dd");
+  
+  // LocalStorage用のキー（ユーザーIDと日付を含む）
+  const getDraftKey = () => `compass_draft_${user?.uid}_${todayStr}`;
 
-  // 保存処理（共通）
-  const saveNow = async (data: any) => {
-    if (!user) return;
-    try {
-      setIsSaving(true);
-      await saveDailyLog(user.uid, todayStr, data);
-    } catch (err) {
-      console.error("[Compass] Save failed:", err);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // 読み込み（初回の一度だけ、または日付変更時のみ。他端末の上書きを避けるため）
+  // 1. 初期ロード & LocalStorageからの復旧
   useEffect(() => {
     if (!user) return;
-    setDailyLogLoaded(false);
+    
+    // まずLocalStorageから復旧（最速）
+    const savedDraft = localStorage.getItem(getDraftKey());
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft);
+        if (draft.schedule !== undefined) setSchedule(draft.schedule);
+        if (draft.diary !== undefined) setDiary(draft.diary);
+        if (draft.dinner !== undefined) setDinner(draft.dinner);
+        if (draft.wakeTime !== undefined) setWakeTime(draft.wakeTime);
+        if (draft.bedTime !== undefined) setBedTime(draft.bedTime);
+        if (draft.fulfillment !== undefined) setProgressPercent(draft.fulfillment);
+        
+        // バックアップから復元した項目をDirty（保存が必要）とする
+        const dirtyFields: Record<string, boolean> = {};
+        Object.keys(draft).forEach(k => dirtyFields[k] = true);
+        setIsDirty(prev => ({ ...prev, ...dirtyFields }));
+      } catch (e) {
+        console.error("Draft restore failed", e);
+      }
+    }
 
+    // 2. Firestoreからのリアルタイム同期（メモ帳方式）
     const docRef = doc(db, `users/${user.uid}/dailyLogs`, todayStr);
-    const load = async () => {
-      const snap = await getDoc(docRef);
+    const unsub = onSnapshot(docRef, (snap) => {
       if (snap.exists()) {
         const log = snap.data();
-        setSchedule(log.schedule || "");
-        setWakeTime(log.wakeTime || "07:00");
-        setBedTime(log.bedTime || "23:30");
-        setDinner(log.dinner || "");
-        setDiary(log.diary || "");
-        setProgressPercent(log.fulfillment ?? 50);
+        
+        // 重要：LocalStorageに「書きかけ」のデータがない項目だけを上書き更新する
+        // これにより、自分の入力が古いデータで消されるのを完全に防ぐ
+        const savedDraftStr = localStorage.getItem(getDraftKey());
+        const draft = savedDraftStr ? JSON.parse(savedDraftStr) : {};
+
+        if (draft.schedule === undefined) setSchedule(log.schedule || "");
+        if (draft.diary === undefined) setDiary(log.diary || "");
+        if (draft.dinner === undefined) setDinner(log.dinner || "");
+        if (draft.wakeTime === undefined) setWakeTime(log.wakeTime || "07:00");
+        if (draft.bedTime === undefined) setBedTime(log.bedTime || "23:30");
+        if (draft.fulfillment === undefined) setProgressPercent(log.fulfillment ?? 50);
       }
       setDailyLogLoaded(true);
-    };
-    load();
+    }, (err) => {
+      console.error("Firestore sync error:", err);
+      setDailyLogLoaded(true);
+    });
+
+    return () => unsub();
   }, [user, todayStr]);
 
-  // フォーカスを失った時に保存
-  const handleBlur = () => {
-    if (dailyLogLoaded) {
-      saveNow({ schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent });
+  // 個別保存処理（クラウドへ同期）
+  const saveField = async (fieldName: string, value: any) => {
+    if (!user) return;
+    setIsSavingField(prev => ({ ...prev, [fieldName]: true }));
+    try {
+      await saveDailyLog(user.uid, todayStr, { [fieldName]: value });
+      
+      // クラウド保存に成功したら、LocalStorageのバックアップからその項目を消去する
+      const savedDraft = localStorage.getItem(getDraftKey());
+      if (savedDraft) {
+        const draft = JSON.parse(savedDraft);
+        delete draft[fieldName];
+        if (Object.keys(draft).length === 0) {
+          localStorage.removeItem(getDraftKey());
+        } else {
+          localStorage.setItem(getDraftKey(), JSON.stringify(draft));
+        }
+      }
+      
+      setIsDirty(prev => ({ ...prev, [fieldName]: false }));
+    } catch (err) {
+      console.error(`[Compass] Save ${fieldName} failed:`, err);
+      alert(`保存に失敗しました。バックアップはブラウザに残っています。: ${err}`);
+    } finally {
+      setIsSavingField(prev => ({ ...prev, [fieldName]: false }));
     }
   };
 
-  // ページ移動時（コンポーネント消滅時）の最終保存
-  useEffect(() => {
-    return () => {
-      if (user && dailyLogLoaded) {
-        // バックグラウンドで即座に保存を実行（awaitしない）
-        saveDailyLog(user.uid, todayStr, { schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent });
-      }
-    };
-  }, [user, todayStr, dailyLogLoaded, schedule, wakeTime, bedTime, dinner, diary, progressPercent]);
+  // 入力変更時の処理（Dirtyフラグ + LocalStorageバックアップ）
+  const handleFieldChange = (fieldName: string, value: any, setter: (v: any) => void) => {
+    setter(value);
+    setIsDirty(prev => ({ ...prev, [fieldName]: true }));
+    
+    // 即座にLocalStorageへバックアップ
+    if (user) {
+      const savedDraft = localStorage.getItem(getDraftKey());
+      const draft = savedDraft ? JSON.parse(savedDraft) : {};
+      draft[fieldName] = value;
+      localStorage.setItem(getDraftKey(), JSON.stringify(draft));
+    }
+  };
 
   // ルーティンをFirebaseからリアルタイム取得
   useEffect(() => {
@@ -230,11 +276,7 @@ function DailyContent() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-10 animate-in fade-in zoom-in-95 duration-500 pb-24 relative">
-      {/* Subtle Saving Indicator */}
-      <div className={`fixed bottom-20 right-6 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-border shadow-sm transition-all duration-300 ${isSaving ? "opacity-100 scale-100" : "opacity-0 scale-90"}`}>
-        <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
-        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Saving...</span>
-      </div>
+      {/* 個別の保存中表示は不要にし、ボタン内で表現するように変更 */}
 
       <header>
         <div className="flex items-end gap-3 mt-1 mb-4 flex-wrap">
@@ -252,14 +294,25 @@ function DailyContent() {
 
       {/* Today's Schedule */}
       <section>
-        <h2 className="font-semibold text-xl mb-3 flex items-center gap-2">
-          <CalendarClock className="text-primary" size={22}/> 
-          {dict.daily.todaySchedule}
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-xl flex items-center gap-2">
+            <CalendarClock className="text-primary" size={22}/> 
+            {dict.daily.todaySchedule}
+          </h2>
+          {isDirty.schedule && (
+            <button 
+              onClick={() => saveField('schedule', schedule)}
+              disabled={isSavingField.schedule}
+              className="flex items-center gap-1.5 px-3 py-1 bg-primary text-white rounded-full text-xs font-bold shadow-sm animate-in fade-in zoom-in"
+            >
+              {isSavingField.schedule ? <RotateCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+              {dict.memos.save}
+            </button>
+          )}
+        </div>
         <textarea 
           value={schedule}
-          onChange={e => setSchedule(e.target.value)}
-          onBlur={handleBlur}
+          onChange={e => handleFieldChange('schedule', e.target.value, setSchedule)}
           placeholder={dict.daily.todaySchedulePlaceholder}
           className="w-full h-24 bg-white border border-border rounded-xl p-4 resize-none shadow-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
         ></textarea>
@@ -456,10 +509,25 @@ function DailyContent() {
 
       {/* Evening Reflection & Diary */}
       <section>
-        <h2 className="font-semibold text-xl mb-3 flex items-center gap-2">
-          <Edit3 className="text-primary" size={22}/> 
-          {dict.daily.reflection}
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-xl flex items-center gap-2">
+            <Edit3 className="text-primary" size={22}/> 
+            {dict.daily.reflection}
+          </h2>
+          {(isDirty.diary || isDirty.dinner) && (
+            <button 
+              onClick={async () => {
+                if (isDirty.diary) await saveField('diary', diary);
+                if (isDirty.dinner) await saveField('dinner', dinner);
+              }}
+              disabled={isSavingField.diary || isSavingField.dinner}
+              className="flex items-center gap-1.5 px-3 py-1 bg-primary text-white rounded-full text-xs font-bold shadow-sm animate-in fade-in zoom-in"
+            >
+              {(isSavingField.diary || isSavingField.dinner) ? <RotateCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+              一括保存
+            </button>
+          )}
+        </div>
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-border space-y-5">
           <div className="flex flex-col sm:flex-row gap-5">
             <div className="space-y-2 flex-1">
@@ -474,8 +542,7 @@ function DailyContent() {
               <input 
                 type="text" 
                 value={dinner}
-                onChange={e => setDinner(e.target.value)}
-                onBlur={handleBlur}
+                onChange={e => handleFieldChange('dinner', e.target.value, setDinner)}
                 placeholder={dict.daily.dinnerPlaceholder}
                 className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium"
               />
@@ -486,8 +553,7 @@ function DailyContent() {
             <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-2"><Edit3 size={14}/> {dict.daily.diary}</label>
             <textarea 
               value={diary}
-              onChange={e => setDiary(e.target.value)}
-              onBlur={handleBlur}
+              onChange={e => handleFieldChange('diary', e.target.value, setDiary)}
               placeholder={dict.daily.diaryPlaceholder}
               className="w-full h-32 bg-background border border-border rounded-xl p-4 resize-none focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
             ></textarea>
@@ -528,8 +594,7 @@ function DailyContent() {
                      type="time" 
                      value={wakeTime} 
                      step="300"
-                     onChange={(e) => setWakeTime(e.target.value)}
-                     onBlur={handleBlur}
+                     onChange={(e) => handleFieldChange('wakeTime', e.target.value, setWakeTime)}
                      className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground cursor-pointer" 
                    />
                  </div>
@@ -539,12 +604,22 @@ function DailyContent() {
                      type="time" 
                      value={bedTime} 
                      step="300"
-                     onChange={(e) => setBedTime(e.target.value)}
-                     onBlur={handleBlur}
+                     onChange={(e) => handleFieldChange('bedTime', e.target.value, setBedTime)}
                      className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground cursor-pointer" 
                    />
                  </div>
                </div>
+               {(isDirty.wakeTime || isDirty.bedTime) && (
+                 <button 
+                   onClick={async () => {
+                     if (isDirty.wakeTime) await saveField('wakeTime', wakeTime);
+                     if (isDirty.bedTime) await saveField('bedTime', bedTime);
+                   }}
+                   className="w-full mt-4 py-2 bg-primary text-white rounded-xl text-xs font-bold transition-all"
+                 >
+                   睡眠時間を保存
+                 </button>
+               )}
             </div>
           </div>
         </div>
@@ -564,8 +639,8 @@ function DailyContent() {
           max="100" 
           value={progressPercent}
           onChange={(e) => setProgressPercent(Number(e.target.value))}
-          onMouseUp={handleBlur}
-          onTouchEnd={handleBlur}
+          onMouseUp={() => saveField('fulfillment', progressPercent)}
+          onTouchEnd={() => saveField('fulfillment', progressPercent)}
           style={{ 
             backgroundImage: `linear-gradient(to right, ${progressColor} ${progressPercent}%, var(--muted) ${progressPercent}%)` 
           }}
