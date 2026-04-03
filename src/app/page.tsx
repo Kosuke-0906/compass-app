@@ -224,18 +224,44 @@ function DailyContent() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-10 animate-in fade-in zoom-in-95 duration-500 pb-24">
-      <header>
-        <div className="flex items-end gap-3 mt-1 mb-4 flex-wrap">
-          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
-            {dict.daily.title}
-          </h1>
-          <span className="text-lg text-muted-foreground font-semibold pb-0.5">
-            {format(displayDate, "MM/dd (E)")}
-          </span>
+      <header className="relative">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pt-2">
+          <div className="flex items-end gap-3 flex-wrap">
+            <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
+              {dict.daily.title}
+            </h1>
+            <span className="text-lg text-muted-foreground font-semibold pb-0.5">
+              {format(displayDate, "MM/dd (E)")}
+            </span>
+          </div>
+          
+          <div className="flex items-center gap-3 bg-muted/30 px-3 py-1.5 rounded-2xl border border-border/50">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">Account</span>
+              <span className="text-xs font-bold text-foreground truncate max-w-[150px]">
+                {user?.displayName || user?.email?.split('@')[0] || "User"}
+              </span>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20 text-primary">
+              {user?.photoURL ? (
+                <img src={user.photoURL} alt="" className="w-full h-full rounded-full" />
+              ) : (
+                <CheckCircle2 size={16} />
+              )}
+            </div>
+          </div>
         </div>
-        <Link href="/calendar" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-border rounded-full text-xs font-semibold text-muted-foreground hover:text-primary hover:border-primary/50 shadow-sm transition-all group">
-          <CalendarDays size={14} className="text-primary/70 group-hover:text-primary transition-colors" /> {dict.daily.selectAnotherDay}
-        </Link>
+
+        <div className="flex items-center justify-between gap-4">
+          <Link href="/calendar" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-border rounded-full text-xs font-semibold text-muted-foreground hover:text-primary hover:border-primary/50 shadow-sm transition-all group">
+            <CalendarDays size={14} className="text-primary/70 group-hover:text-primary transition-colors" /> {dict.daily.selectAnotherDay}
+          </Link>
+          
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest bg-white border border-border px-3 py-1.5 rounded-full shadow-sm">
+            <div className={`w-1.5 h-1.5 rounded-full ${saveTimerRef.current ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500'}`}></div>
+            {saveTimerRef.current ? "Saving..." : "Synced"}
+          </div>
+        </div>
       </header>
 
       {/* Today's Schedule */}
