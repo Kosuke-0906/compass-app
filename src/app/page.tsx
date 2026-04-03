@@ -67,44 +67,49 @@ function DailyContent() {
     });
   }, [user, todayStr]);
 
-  // DailyLogをFirebaseに自動保存（デバウンス＋ページ離脱時に即保存）
+  // DailyLogをFirebaseに自動保存
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const latestValuesRef = useRef({ schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent });
+  const userRef = useRef(user);
+  const dailyLogLoadedRef = useRef(dailyLogLoaded);
+  const todayStrRef = useRef(todayStr);
+  userRef.current = user;
+  dailyLogLoadedRef.current = dailyLogLoaded;
+  todayStrRef.current = todayStr;
 
-  // 最新値を常にrefに反映
-  useEffect(() => {
-    latestValuesRef.current = { schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent };
-  }, [schedule, wakeTime, bedTime, dinner, diary, progressPercent]);
+  // 最新値を常にrefに保持
+  const valuesRef = useRef({ schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent });
+  valuesRef.current = { schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent };
 
-  const flushSave = useCallback(() => {
-    if (!user || !dailyLogLoaded) return;
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    saveDailyLog(user.uid, todayStr, latestValuesRef.current);
-  }, [user, todayStr, dailyLogLoaded]);
+  // 即座に保存する関数
+  const doSaveNow = useCallback(() => {
+    const u = userRef.current;
+    const loaded = dailyLogLoadedRef.current;
+    const dateStr = todayStrRef.current;
+    if (!u || !loaded) return;
+    console.log("[Compass] Saving DailyLog:", dateStr, valuesRef.current);
+    saveDailyLog(u.uid, dateStr, valuesRef.current);
+  }, []);
 
-  // 値が変わったら0.8秒後に保存
+  // 値が変わったら0.5秒後に保存
   useEffect(() => {
     if (!user || !dailyLogLoaded) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveDailyLog(user.uid, todayStr, latestValuesRef.current);
+      doSaveNow();
       saveTimerRef.current = null;
-    }, 800);
+    }, 500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [user, todayStr, schedule, wakeTime, bedTime, dinner, diary, progressPercent, dailyLogLoaded]);
+  }, [user, dailyLogLoaded, schedule, wakeTime, bedTime, dinner, diary, progressPercent, doSaveNow]);
 
-  // ページ離脱・リロード時に即保存
+  // ページ離脱・リロード時に即座に保存
   useEffect(() => {
-    const handleBeforeUnload = () => flushSave();
+    const handleBeforeUnload = () => doSaveNow();
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      flushSave(); // コンポーネントunmount時も即保存
+      doSaveNow();
     };
-  }, [flushSave]);
+  }, [doSaveNow]);
 
   // ルーティンをFirebaseからリアルタイム取得
   useEffect(() => {

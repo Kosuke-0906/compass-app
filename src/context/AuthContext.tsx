@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { User, onAuthStateChanged, signInWithRedirect, GoogleAuthProvider, signOut as firebaseSignOut, getRedirectResult } from "firebase/auth";
+import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signOut as firebaseSignOut, getRedirectResult } from "firebase/auth";
 import { auth } from "@/lib/firebase/config";
 import { Compass } from "lucide-react";
 
@@ -24,7 +24,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // リダイレクト結果をキャッチ
+    // リダイレクト結果をキャッチ（PWAモードの場合）
     getRedirectResult(auth).catch((err) => {
       console.error("Redirect result error:", err);
     });
@@ -40,7 +40,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithRedirect(auth, provider);
+      // PWA standaloneモード(iPhoneホーム画面)ではリダイレクト、通常ブラウザではポップアップ
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || ('standalone' in window.navigator && (window.navigator as any).standalone);
+      if (isStandalone) {
+        await signInWithRedirect(auth, provider);
+      } else {
+        await signInWithPopup(auth, provider);
+      }
     } catch (error) {
       console.error("Error signing in with Google", error);
     }

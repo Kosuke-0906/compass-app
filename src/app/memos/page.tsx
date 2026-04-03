@@ -56,6 +56,7 @@ export default function MemosPage() {
   const [inputMemoTags, setInputMemoTags] = useState<string[]>([]); // tag IDs
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
 
   // Fetch Data (Realtime)
   useEffect(() => {
@@ -434,7 +435,7 @@ export default function MemosPage() {
           )}
           
           <div className="flex justify-between items-center">
-             <div className="flex items-center gap-2">
+             <div className="flex items-center gap-2 relative">
                 {tags.length === 0 ? (
                   <button 
                     onClick={() => setIsTagModalOpen(true)}
@@ -443,35 +444,33 @@ export default function MemosPage() {
                     <Plus size={14} /> タグを作成
                   </button>
                 ) : (
-                  <>
-                    <div className="flex -space-x-1 decoration-clone">
-                      {tags.slice(0, 5).map(tag => (
-                        <button
-                          key={tag.id}
-                          onClick={() => {
-                            if (inputMemoTags.includes(tag.id)) {
-                              setInputMemoTags(prev => prev.filter(id => id !== tag.id));
-                            } else {
-                              setInputMemoTags(prev => [...prev, tag.id]);
-                            }
-                          }}
-                          className={`w-7 h-7 rounded-full border-2 transition-all flex items-center justify-center relative ${inputMemoTags.includes(tag.id) ? 'z-10 scale-110 shadow-md border-white ring-2 ring-primary/20' : 'border-white hover:z-10 hover:scale-110'}`}
-                          style={{ backgroundColor: tag.color }}
-                          title={tag.name}
-                        >
-                          {inputMemoTags.includes(tag.id) && <X size={12} className="text-white" />}
-                        </button>
-                      ))}
-                    </div>
-                    {tags.length > 5 && (
-                      <button 
-                        onClick={() => setIsTagModalOpen(true)}
-                        className="text-[10px] text-muted-foreground font-bold hover:text-primary transition-colors flex items-center gap-0.5 ml-1"
+                  <button 
+                    onClick={() => setIsTagDropdownOpen(!isTagDropdownOpen)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground bg-muted/50 hover:bg-muted px-3 py-1.5 rounded-full border border-border transition-all"
+                  >
+                    <Tag size={14} /> タグを選択
+                  </button>
+                )}
+                {isTagDropdownOpen && tags.length > 0 && (
+                  <div className="absolute bottom-full left-0 mb-2 bg-white border border-border rounded-xl shadow-xl p-2 min-w-[180px] z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                    {tags.map(tag => (
+                      <button
+                        key={tag.id}
+                        onClick={() => {
+                          if (inputMemoTags.includes(tag.id)) {
+                            setInputMemoTags(prev => prev.filter(id => id !== tag.id));
+                          } else {
+                            setInputMemoTags(prev => [...prev, tag.id]);
+                          }
+                        }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${inputMemoTags.includes(tag.id) ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'}`}
                       >
-                        <Plus size={12} /> {tags.length - 5}
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.color }}></div>
+                        {tag.name}
+                        {inputMemoTags.includes(tag.id) && <span className="ml-auto text-primary">✓</span>}
                       </button>
-                    )}
-                  </>
+                    ))}
+                  </div>
                 )}
              </div>
 
