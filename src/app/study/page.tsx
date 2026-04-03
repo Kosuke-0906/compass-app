@@ -85,12 +85,19 @@ export default function StudyPage() {
   const uniqueCategories = useMemo(() => {
     const cats: Record<string, string> = {};
     
-    // この期間のログに存在するマテリアルIDを抽出
-    const materialIdsWithLogs = new Set(logs.map(l => l.materialId));
+    // この期間のログを集計
+    const categoryTotals: Record<string, number> = {};
     
+    logs.forEach(log => {
+      const mat = materials.find(m => m.id === log.materialId);
+      if (mat && !mat.isDeleted) {
+        categoryTotals[mat.categoryId] = (categoryTotals[mat.categoryId] || 0) + log.durationMins;
+      }
+    });
+
     materials.forEach(m => {
-      // 記録があり、かつ削除されていないもののみ凡例に出す
-      if (materialIdsWithLogs.has(m.id)) {
+      // 合計時間が0より大きいカテゴリーのみ凡例に出す
+      if (categoryTotals[m.categoryId] > 0) {
         if (!cats[m.categoryId]) {
           cats[m.categoryId] = m.color;
         }
