@@ -14,8 +14,6 @@ import {
   Mountain, 
   ChevronDown, 
   ChevronRight, 
-  ChevronLeft,
-  RotateCw,
   CalendarDays, 
   X,
   PlusCircle,
@@ -64,10 +62,6 @@ export default function GoalsPage() {
     });
     return () => unsubscribe();
   }, [user]);
-
-  const handleForceSync = () => {
-    window.location.reload();
-  };
 
   const handleSave = async () => {
     if (!user || !newTitle.trim()) return;
@@ -219,69 +213,19 @@ export default function GoalsPage() {
   }
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-500 pb-32">
-      <header>
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-             <Link href="/" className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-primary">
-               <ChevronLeft size={24} />
-             </Link>
-             <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
-               {dict.goals.title}
-             </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={handleForceSync}
-              className="p-1.5 rounded-full text-muted-foreground hover:bg-muted hover:text-primary transition-all active:rotate-180 duration-500"
-              title="Force Sync / Reload"
-            >
-              <RotateCw size={18} />
-            </button>
-            <button 
-              onClick={() => {
-                setEditGoalId(null);
-                setNewTitle("");
-                setNewDeadline("");
-                setNewTags("");
-                setNewType('month');
-                setIsModalOpen(true);
-              }}
-              className="bg-primary text-white p-2.5 rounded-full shadow-lg hover:shadow-primary/20 hover:scale-105 active:scale-95 transition-all transition-all"
-            >
-              <Plus size={20} strokeWidth={3} />
-            </button>
-          </div>
+    <div className="p-6 max-w-2xl mx-auto space-y-6 animate-in fade-in zoom-in-95 duration-500 pb-24">
+      <header className="mb-4">
+        <div className="flex items-end gap-3 mt-1 mb-4 flex-wrap">
+          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">{dict.goals.title}</h1>
         </div>
+        <Link href="/calendar" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-border rounded-full text-xs font-semibold text-muted-foreground hover:text-primary hover:border-primary/50 shadow-sm transition-all group">
+          <CalendarDays size={14} className="text-primary/70 group-hover:text-primary transition-colors" /> カレンダーを表示
+        </Link>
       </header>
 
       <CollapsibleSection title="今年の目標" type="year" icon={Target} />
       <CollapsibleSection title="今月の目標" type="month" icon={Flag} />
       <CollapsibleSection title="ターゲット" type="longterm" icon={Mountain} />
-
-      {/* Diagnosis Section (Identical to Home) */}
-      <footer className="mt-16 pt-8 border-t border-border flex flex-col items-center gap-4 text-center pb-8">
-        <details className="w-full group">
-          <summary className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest cursor-pointer hover:text-primary list-none list-inside opacity-50 hover:opacity-100 transition-opacity">
-            <span className="flex items-center justify-center gap-2">
-               <Flag size={10}/> Diagnosis & Sync Parity
-            </span>
-          </summary>
-          <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-border/50 text-[10px] font-mono text-left space-y-2 animate-in fade-in slide-in-from-bottom-2">
-            <div className="flex justify-between border-b border-border/30 pb-1">
-              <span className="text-muted-foreground">PROJECT ID:</span>
-              <span className="font-bold text-foreground truncate ml-4">{process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}</span>
-            </div>
-            <div className="flex justify-between border-b border-border/30 pb-1">
-              <span className="text-muted-foreground">USER ID:</span>
-              <span className="font-bold text-foreground break-all ml-4">{user?.uid}</span>
-            </div>
-            <p className="text-[8px] text-muted-foreground/60 leading-tight">全デバイスで上記情報が完全に一致しているか確認してください。</p>
-          </div>
-        </details>
-        <p className="text-[9px] text-muted-foreground/40 font-medium">Compass / Digital Architecture v1.1</p>
-      </footer>
-
 
       {/* 目標追加モーダル */}
       {isModalOpen && (

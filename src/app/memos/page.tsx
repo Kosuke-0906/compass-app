@@ -5,7 +5,7 @@ import { format, subDays } from "date-fns";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { 
-  PenTool, Search, Tag, Edit2, Trash2, Settings2, Star, Pin, X, Plus, Save, Loader2, Bookmark, CalendarDays, ChevronRight, RotateCw, StickyNote
+  PenTool, Search, Tag, Edit2, Trash2, Settings2, Star, Pin, X, Plus, Save, Loader2, Bookmark, CalendarDays, ChevronRight
 } from "lucide-react";
 import { collection, query, onSnapshot, orderBy, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
@@ -57,10 +57,6 @@ export default function MemosPage() {
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
-
-  const handleForceSync = () => {
-    window.location.reload();
-  };
 
   // Fetch Data (Realtime)
   useEffect(() => {
@@ -686,29 +682,6 @@ export default function MemosPage() {
           </div>
         </div>
       )}
-
-      {/* Diagnosis Section (Identical to Home/Goals) */}
-      <footer className="mt-16 pt-8 border-t border-border flex flex-col items-center gap-4 text-center pb-8 border-t">
-        <details className="w-full group">
-          <summary className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest cursor-pointer hover:text-primary list-none list-inside opacity-50 hover:opacity-100 transition-opacity">
-            <span className="flex items-center justify-center gap-2">
-               <StickyNote size={10}/> Diagnosis & Sync Parity
-            </span>
-          </summary>
-          <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-border/50 text-[10px] font-mono text-left space-y-2 animate-in fade-in slide-in-from-bottom-2">
-            <div className="flex justify-between border-b border-border/30 pb-1">
-              <span className="text-muted-foreground">PROJECT ID:</span>
-              <span className="font-bold text-foreground truncate ml-4">{process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}</span>
-            </div>
-            <div className="flex justify-between border-b border-border/30 pb-1">
-              <span className="text-muted-foreground">USER ID:</span>
-              <span className="font-bold text-foreground break-all ml-4">{user?.uid}</span>
-            </div>
-            <p className="text-[8px] text-muted-foreground/60 leading-tight">全デバイスで上記情報が完全に一致しているか確認してください。</p>
-          </div>
-        </details>
-        <p className="text-[9px] text-muted-foreground/40 font-medium">Compass / Digital Architecture v1.1</p>
-      </footer>
     </div>
   );
 }
