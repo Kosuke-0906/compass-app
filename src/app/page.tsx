@@ -10,7 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { collection, doc, query, where, onSnapshot, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import {
-  saveRoutine, deleteRoutine, toggleRoutineCompletion, RoutineItem,
+  saveRoutine, deleteRoutine, toggleRoutineCompletion, RoutineItem, MasterRoutine, getMasterRoutines,
   saveTodo, deleteTodo, toggleTodoCompletion, TodoItem,
   saveDailyLog
 } from "@/lib/firebase/db";
@@ -35,9 +35,11 @@ function DailyContent() {
   const [schedule, setSchedule] = useState("");
   const [dinner, setDinner] = useState("");
   const [diary, setDiary] = useState("");
+  const [phoneTimeMins, setPhoneTimeMins] = useState(0);
   
   const [targetStudyMins, setTargetStudyMins] = useState(120);
   const [todayStudyMins, setTodayStudyMins] = useState<number | null>(null);
+  const [todayReadingMins, setTodayReadingMins] = useState<number | null>(null);
   const [dailyLogLoaded, setDailyLogLoaded] = useState(false);
   const [isSavingField, setIsSavingField] = useState<Record<string, boolean>>({});
   const [isDirty, setIsDirty] = useState<Record<string, boolean>>({});
@@ -63,6 +65,7 @@ function DailyContent() {
         if (draft.wakeTime !== undefined) setWakeTime(draft.wakeTime);
         if (draft.bedTime !== undefined) setBedTime(draft.bedTime);
         if (draft.fulfillment !== undefined) setProgressPercent(draft.fulfillment);
+        if (draft.phoneTimeMins !== undefined) setPhoneTimeMins(draft.phoneTimeMins);
         
         // バックアップから復元した項目をDirty（保存が必要）とする
         const dirtyFields: Record<string, boolean> = {};
@@ -90,6 +93,7 @@ function DailyContent() {
         if (draft.wakeTime === undefined) setWakeTime(log.wakeTime || "07:00");
         if (draft.bedTime === undefined) setBedTime(log.bedTime || "23:30");
         if (draft.fulfillment === undefined) setProgressPercent(log.fulfillment ?? 50);
+        if (draft.phoneTimeMins === undefined) setPhoneTimeMins(log.phoneTimeMins || 0);
       }
       setDailyLogLoaded(true);
     }, (err) => {
@@ -142,15 +146,44 @@ function DailyContent() {
     }
   };
 
-  // ルーティンをFirebaseからリアルタイム取得
+  // ルーティンをFirebaseからリアルタイム取得 + 既定の同期
   useEffect(() => {
     if (!user) return;
     const q = query(
       collection(db, `users/${user.uid}/routines`),
       where("date", "==", todayStr)
     );
-    const unsub = onSnapshot(q, (snap) => {
-      setRoutines(snap.docs.map(d => ({ id: d.id, ...d.data() } as RoutineItem)));
+    const unsub = onSnapshot(q, async (snap) => {
+      const dayRoutines = snap.docs.map(d => ({ id: d.id, ...d.data() } as RoutineItem));
+      
+      // もし今日のルーティンが空なら、既定のルーティンをコピーする
+      if (dayRoutines.length === 0) {
+        const masters = await getMasterRoutines(user.uid);
+        if (masters.length > 0) {
+          // Promise.allで一括保存
+          await Promise.all(masters.map(m => 
+            saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false })
+          ));
+          // onSnapshotが再度発火して更新される
+        }
+      }
+      
+      setRoutines(dayRoutines);
+    });
+    return () => unsub();
+  }, [user, todayStr]);
+
+  // 今日の読書記録をFirebaseからリアルタイム取得
+  useEffect(() => {
+    if (!user) return;
+    const qLogs = query(
+      collection(db, `users/${user.uid}/readingLogs`),
+      where("date", "==", todayStr)
+    );
+    const unsub = onSnapshot(qLogs, (snap) => {
+      let total = 0;
+      snap.forEach(doc => { total += doc.data().durationMins || 0; });
+      setTodayReadingMins(total);
     });
     return () => unsub();
   }, [user, todayStr]);
@@ -231,18 +264,26 @@ function DailyContent() {
 
   const sleepInfo = calculateSleepDuration(bedTime, wakeTime);
 
-  // Time Selectors for Phone Time
-  const renderTimeSelectors = () => (
+  // Time Selectors for Phone Time/Any Time
+  const renderTimeSelectors = (mins: number, onChange: (newMins: number) => void) => (
     <div className="flex gap-2">
       <div className="flex bg-background border border-border rounded-lg overflow-hidden focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-        <select className="bg-transparent px-2 py-2.5 text-sm font-medium text-foreground outline-none appearance-none cursor-pointer">
+        <select 
+          value={Math.floor(mins / 60)}
+          onChange={(e) => onChange(Number(e.target.value) * 60 + (mins % 60))}
+          className="bg-transparent px-2 py-2.5 text-sm font-medium text-foreground outline-none appearance-none cursor-pointer"
+        >
           {[...Array(25)].map((_, i) => <option key={i} value={i}>{i}</option>)}
         </select>
         <span className="flex items-center text-xs text-muted-foreground pr-2 font-medium pointer-events-none select-none">{dict.daily.hours}</span>
       </div>
       <div className="flex bg-background border border-border rounded-lg overflow-hidden focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-        <select className="bg-transparent px-2 py-2.5 text-sm font-medium text-foreground outline-none appearance-none cursor-pointer">
-          {[0, 10, 20, 30, 40, 50].map((m) => <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>)}
+        <select 
+          value={mins % 60}
+          onChange={(e) => onChange(Math.floor(mins / 60) * 60 + Number(e.target.value))}
+          className="bg-transparent px-2 py-2.5 text-sm font-medium text-foreground outline-none appearance-none cursor-pointer"
+        >
+          {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>)}
         </select>
         <span className="flex items-center text-xs text-muted-foreground pr-2 font-medium pointer-events-none select-none">{dict.daily.minutes}</span>
       </div>
@@ -325,6 +366,9 @@ function DailyContent() {
             <RotateCw className="text-primary" size={22}/> 
             {dict.daily.routine}
           </h2>
+          <Link href="/settings/routines" className="text-xs font-bold text-primary hover:bg-primary/5 px-3 py-1.5 rounded-full border border-primary/20 transition-all">
+             {dict.daily.manageRoutines}
+          </Link>
         </div>
         <div className="space-y-3">
           {routines.map((routine) => (
@@ -450,7 +494,7 @@ function DailyContent() {
                    onChange={(e) => setTargetStudyMins(Math.floor(targetStudyMins / 60) * 60 + Number(e.target.value))}
                    className="bg-transparent px-2 py-2 text-sm font-bold text-foreground outline-none appearance-none cursor-pointer"
                 >
-                  {[0, 10, 20, 30, 40, 50].map((m) => <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>)}
+                  {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>)}
                 </select>
                 <span className="flex items-center text-[10px] text-muted-foreground pr-2 font-bold pointer-events-none select-none">m</span>
               </div>
@@ -507,6 +551,36 @@ function DailyContent() {
         </div>
       </section>
 
+      {/* Reading Time Section */}
+      <section>
+        <h2 className="font-semibold text-xl mb-3 flex items-center gap-2">
+          <BookOpen className="text-primary" size={22}/> 
+          {dict.daily.readingTime}
+        </h2>
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-border flex flex-col gap-4">
+          <div className="flex items-end justify-between px-1">
+            <Link href="/reading" className="flex flex-col group cursor-pointer">
+              <span className="text-[11px] font-bold text-primary/80 mb-1 flex items-center gap-1 uppercase tracking-wider">
+                {dict.daily.readingTracker} <ChevronRight size={12}/>
+              </span>
+              <div className="text-4xl font-extrabold text-foreground group-hover:text-primary transition-colors flex items-baseline gap-1">
+                {todayReadingMins === null ? (
+                  <span className="text-xl animate-pulse text-muted-foreground">読み込み中...</span>
+                ) : (
+                  <>
+                    {Math.floor(todayReadingMins / 60)}<span className="text-lg font-bold">h</span> {todayReadingMins % 60}<span className="text-lg font-bold">m</span>
+                  </>
+                )}
+              </div>
+            </Link>
+            
+            <div className="bg-primary/5 p-3 rounded-2xl">
+               <BookOpen size={24} className="text-primary opacity-40" />
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Evening Reflection & Diary */}
       <section>
         <div className="flex items-center justify-between mb-3">
@@ -514,16 +588,17 @@ function DailyContent() {
             <Edit3 className="text-primary" size={22}/> 
             {dict.daily.reflection}
           </h2>
-          {(isDirty.diary || isDirty.dinner) && (
+          {(isDirty.diary || isDirty.dinner || isDirty.phoneTimeMins) && (
             <button 
               onClick={async () => {
                 if (isDirty.diary) await saveField('diary', diary);
                 if (isDirty.dinner) await saveField('dinner', dinner);
+                if (isDirty.phoneTimeMins) await saveField('phoneTimeMins', phoneTimeMins);
               }}
-              disabled={isSavingField.diary || isSavingField.dinner}
+              disabled={isSavingField.diary || isSavingField.dinner || isSavingField.phoneTimeMins}
               className="flex items-center gap-1.5 px-3 py-1 bg-primary text-white rounded-full text-xs font-bold shadow-sm animate-in fade-in zoom-in"
             >
-              {(isSavingField.diary || isSavingField.dinner) ? <RotateCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+              {(isSavingField.diary || isSavingField.dinner || isSavingField.phoneTimeMins) ? <RotateCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
               一括保存
             </button>
           )}
@@ -531,8 +606,8 @@ function DailyContent() {
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-border space-y-5">
           <div className="flex flex-col sm:flex-row gap-5">
             <div className="space-y-2 flex-1">
-              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Smartphone size={14}/> {dict.daily.phoneTime}</label>
-              {renderTimeSelectors()}
+                <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Smartphone size={14}/> {dict.daily.phoneTime}</label>
+                {renderTimeSelectors(phoneTimeMins, (val) => handleFieldChange("phoneTimeMins", val, setPhoneTimeMins))}
             </div>
             
             <div className="space-y-2 flex-1 pb-0">

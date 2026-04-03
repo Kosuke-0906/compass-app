@@ -59,6 +59,33 @@ export interface Goal {
   createdAt: Timestamp | FieldValue | null;
 }
 
+// ====== Books (本管理) ======
+
+export interface Book {
+  id: string;
+  title: string;
+  status: 'reading' | 'finished';
+  progress: number; // 0-100
+  startDate: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+}
+
+export interface ReadingLog {
+  id: string;
+  bookId: string;
+  date: string; // YYYY-MM-DD
+  durationMins: number;
+  createdAt: Timestamp | FieldValue | null;
+}
+
+// ====== Master Routines (既定のルーティン) ======
+
+export interface MasterRoutine {
+  id: string;
+  text: string;
+  order: number;
+}
+
 // ====== Study Materials (教材管理) ======
 
 export const getStudyMaterials = async (userId: string): Promise<StudyMaterial[]> => {
@@ -255,5 +282,74 @@ export const deleteTodo = async (userId: string, todoId: string) => {
 export const toggleTodoCompletion = async (userId: string, todoId: string, completed: boolean) => {
   if (!userId) throw new Error("No user ID");
   await updateDoc(doc(db, `users/${userId}/todos`, todoId), { completed });
+};
+
+// ====== Books CRUD ======
+
+export const saveBook = async (userId: string, book: Omit<Book, 'id'>, bookId?: string) => {
+  if (!userId) throw new Error("No user ID");
+  const ref = bookId 
+    ? doc(db, `users/${userId}/books`, bookId) 
+    : doc(collection(db, `users/${userId}/books`));
+  await setDoc(ref, book, { merge: true });
+  return ref.id;
+};
+
+export const deleteBook = async (userId: string, bookId: string) => {
+  if (!userId) throw new Error("No user ID");
+  await deleteDoc(doc(db, `users/${userId}/books`, bookId));
+};
+
+export const getBooks = async (userId: string): Promise<Book[]> => {
+  if (!userId) return [];
+  const snapshot = await getDocs(collection(db, `users/${userId}/books`));
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Book));
+};
+
+// ====== Reading Logs CRUD ======
+
+export const saveReadingLog = async (userId: string, log: Omit<ReadingLog, 'id' | 'createdAt'>) => {
+  if (!userId) throw new Error("No user ID");
+  const ref = doc(collection(db, `users/${userId}/readingLogs`));
+  await setDoc(ref, { ...log, createdAt: serverTimestamp() });
+  return ref.id;
+};
+
+export const getReadingLogsByBook = async (userId: string, bookId: string): Promise<ReadingLog[]> => {
+  if (!userId) return [];
+  const q = query(
+    collection(db, `users/${userId}/readingLogs`),
+    where("bookId", "==", bookId)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReadingLog));
+};
+
+export const deleteReadingLog = async (userId: string, logId: string) => {
+  if (!userId) throw new Error("No user ID");
+  await deleteDoc(doc(db, `users/${userId}/readingLogs`, logId));
+};
+
+// ====== Master Routines CRUD ======
+
+export const saveMasterRoutine = async (userId: string, routine: Omit<MasterRoutine, 'id'>, routineId?: string) => {
+  if (!userId) throw new Error("No user ID");
+  const ref = routineId 
+    ? doc(db, `users/${userId}/masterRoutines`, routineId) 
+    : doc(collection(db, `users/${userId}/masterRoutines`));
+  await setDoc(ref, routine, { merge: true });
+  return ref.id;
+};
+
+export const getMasterRoutines = async (userId: string): Promise<MasterRoutine[]> => {
+  if (!userId) return [];
+  const snapshot = await getDocs(collection(db, `users/${userId}/masterRoutines`));
+  const routines = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MasterRoutine));
+  return routines.sort((a, b) => a.order - b.order);
+};
+
+export const deleteMasterRoutine = async (userId: string, routineId: string) => {
+  if (!userId) throw new Error("No user ID");
+  await deleteDoc(doc(db, `users/${userId}/masterRoutines`, routineId));
 };
 
