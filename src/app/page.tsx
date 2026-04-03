@@ -1,18 +1,18 @@
 "use client";
 
-import { useState, Suspense, useEffect, useRef, useCallback } from "react";
+import { useState, Suspense, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, Circle, Smartphone, BookOpen, Moon, Sun, Edit3, Plus, RotateCw, ListTodo, CalendarClock, CalendarDays, Utensils, ChevronLeft, ChevronRight, ChevronDown, Flag, Trash2 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, doc, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import {
   saveRoutine, deleteRoutine, toggleRoutineCompletion, RoutineItem,
   saveTodo, deleteTodo, toggleTodoCompletion, TodoItem,
-  getDailyLog, saveDailyLog
+  saveDailyLog
 } from "@/lib/firebase/db";
 
 function DailyContent() {
@@ -43,73 +43,52 @@ function DailyContent() {
   const { user } = useAuth();
   const todayStr = format(displayDate, "yyyy-MM-dd");
 
-  // DailyLogをFirebaseから読み込み
+  // onSnapshotの更新でsaveが走るのを防ぐフラグ
+  const skipSaveRef = useRef(true);
+
+  // DailyLogをonSnapshotでリアルタイム取得（メモと同じ方式）
   useEffect(() => {
     if (!user) return;
+    skipSaveRef.current = true;
     setDailyLogLoaded(false);
-    getDailyLog(user.uid, todayStr).then((log) => {
-      if (log) {
+
+    const docRef = doc(db, `users/${user.uid}/dailyLogs`, todayStr);
+    const unsub = onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const log = snapshot.data();
+        // onSnapshotからの更新時はsaveをスキップ
+        skipSaveRef.current = true;
         setSchedule(log.schedule || "");
         setWakeTime(log.wakeTime || "07:00");
         setBedTime(log.bedTime || "23:30");
         setDinner(log.dinner || "");
         setDiary(log.diary || "");
         setProgressPercent(log.fulfillment ?? 50);
-      } else {
-        setSchedule("");
-        setDinner("");
-        setDiary("");
-        setProgressPercent(50);
-        setWakeTime("07:00");
-        setBedTime("23:30");
       }
       setDailyLogLoaded(true);
+      // 次のレンダー後にsaveを有効にする
+      setTimeout(() => { skipSaveRef.current = false; }, 100);
     });
+
+    return () => unsub();
   }, [user, todayStr]);
 
-  // DailyLogをFirebaseに自動保存
+  // DailyLogをFirebaseに自動保存（デバウンス）
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const userRef = useRef(user);
-  const dailyLogLoadedRef = useRef(dailyLogLoaded);
-  const todayStrRef = useRef(todayStr);
-  userRef.current = user;
-  dailyLogLoadedRef.current = dailyLogLoaded;
-  todayStrRef.current = todayStr;
 
-  // 最新値を常にrefに保持
-  const valuesRef = useRef({ schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent });
-  valuesRef.current = { schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent };
-
-  // 即座に保存する関数
-  const doSaveNow = useCallback(() => {
-    const u = userRef.current;
-    const loaded = dailyLogLoadedRef.current;
-    const dateStr = todayStrRef.current;
-    if (!u || !loaded) return;
-    console.log("[Compass] Saving DailyLog:", dateStr, valuesRef.current);
-    saveDailyLog(u.uid, dateStr, valuesRef.current);
-  }, []);
-
-  // 値が変わったら0.5秒後に保存
   useEffect(() => {
-    if (!user || !dailyLogLoaded) return;
+    if (!user || !dailyLogLoaded || skipSaveRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      doSaveNow();
+      console.log("[Compass] Saving DailyLog:", todayStr);
+      saveDailyLog(user.uid, todayStr, {
+        schedule, wakeTime, bedTime, dinner, diary,
+        fulfillment: progressPercent,
+      });
       saveTimerRef.current = null;
     }, 500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [user, dailyLogLoaded, schedule, wakeTime, bedTime, dinner, diary, progressPercent, doSaveNow]);
-
-  // ページ離脱・リロード時に即座に保存
-  useEffect(() => {
-    const handleBeforeUnload = () => doSaveNow();
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      doSaveNow();
-    };
-  }, [doSaveNow]);
+  }, [user, todayStr, dailyLogLoaded, schedule, wakeTime, bedTime, dinner, diary, progressPercent]);
 
   // ルーティンをFirebaseからリアルタイム取得
   useEffect(() => {
