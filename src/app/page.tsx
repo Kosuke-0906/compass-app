@@ -277,11 +277,16 @@ function DailyContent() {
 
   const handleUpdateRoutine = async (routine: RoutineItem, updates: Partial<RoutineItem>) => {
     if (!user) return;
+    
+    // Optimistic Update
     const updated = { ...routine, ...updates };
+    setRoutines(prev => prev.map(r => r.id === routine.id ? updated : r));
+
+    const { saveRoutine } = await import("@/lib/firebase/db");
     await saveRoutine(user.uid, { 
       text: updated.text, 
       date: updated.date, 
-      completed: updated.achievement ? updated.achievement >= 5 : updated.completed, 
+      completed: (updated.achievement || 0) >= 5, 
       achievement: updated.achievement,
       comment: updated.comment 
     }, routine.id);
@@ -289,11 +294,16 @@ function DailyContent() {
 
   const handleUpdateTodo = async (todo: TodoItem, updates: Partial<TodoItem>) => {
     if (!user) return;
+    
+    // Optimistic Update
     const updated = { ...todo, ...updates };
+    setTodos(prev => prev.map(t => t.id === todo.id ? updated : t));
+
+    const { saveTodo } = await import("@/lib/firebase/db");
     await saveTodo(user.uid, { 
       text: updated.text, 
       date: updated.date, 
-      completed: updated.achievement ? updated.achievement >= 5 : updated.completed,
+      completed: (updated.achievement || 0) >= 5,
       achievement: updated.achievement,
       comment: updated.comment 
     }, todo.id);
@@ -419,20 +429,20 @@ function DailyContent() {
              const isExpanded = expandedRoutineId === routine.id;
              
              const getAchievementColor = (level: number) => {
-               if (level === 1) return "bg-red-500";
-               if (level === 2) return "bg-orange-400";
+               if (level === 5) return "bg-red-500";
+               if (level === 4) return "bg-orange-500";
                if (level === 3) return "bg-yellow-500";
-               if (level === 4) return "bg-green-500";
-               if (level === 5) return "bg-blue-500";
+               if (level === 2) return "bg-teal-400";
+               if (level === 1) return "bg-blue-500";
                return "bg-muted";
              };
 
              const getAchievementBorder = (level: number) => {
-               if (level === 1) return "border-red-500/20";
-               if (level === 2) return "border-orange-400/20";
+               if (level === 5) return "border-red-500/20";
+               if (level === 4) return "border-orange-500/20";
                if (level === 3) return "border-yellow-500/20";
-               if (level === 4) return "border-green-500/20";
-               if (level === 5) return "border-blue-500/20";
+               if (level === 2) return "border-teal-400/20";
+               if (level === 1) return "border-blue-500/20";
                return "border-border";
              };
 
@@ -536,11 +546,11 @@ function DailyContent() {
              const isExpanded = expandedTodoId === todo.id;
 
              const getLevelColor = (level: number) => {
-               if (level === 1) return "bg-red-500";
-               if (level === 2) return "bg-orange-400";
+               if (level === 5) return "bg-red-500";
+               if (level === 4) return "bg-orange-500";
                if (level === 3) return "bg-yellow-500";
-               if (level === 4) return "bg-green-500";
-               if (level === 5) return "bg-blue-500";
+               if (level === 2) return "bg-teal-400";
+               if (level === 1) return "bg-blue-500";
                return "bg-muted";
              };
 
