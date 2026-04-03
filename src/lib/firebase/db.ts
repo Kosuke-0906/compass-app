@@ -308,10 +308,14 @@ export const getBooks = async (userId: string): Promise<Book[]> => {
 
 // ====== Reading Logs CRUD ======
 
-export const saveReadingLog = async (userId: string, log: Omit<ReadingLog, 'id' | 'createdAt'>) => {
+export const saveReadingLog = async (userId: string, log: Omit<ReadingLog, 'id' | 'createdAt'>, logId?: string) => {
   if (!userId) throw new Error("No user ID");
-  const ref = doc(collection(db, `users/${userId}/readingLogs`));
-  await setDoc(ref, { ...log, createdAt: serverTimestamp() });
+  const ref = logId 
+    ? doc(db, `users/${userId}/readingLogs`, logId)
+    : doc(collection(db, `users/${userId}/readingLogs`));
+  const data: any = { ...log };
+  if (!logId) data.createdAt = serverTimestamp();
+  await setDoc(ref, data, { merge: true });
   return ref.id;
 };
 

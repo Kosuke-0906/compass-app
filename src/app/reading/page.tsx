@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Plus, Trash2, History, BookOpen, CheckCircle2, ChevronRight, Clock } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, History, BookOpen, CheckCircle2, ChevronRight, Clock, Edit2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { format } from "date-fns";
@@ -28,6 +28,7 @@ export default function ReadingPage() {
   const [showLogInput, setShowLogInput] = useState(false);
   const [logHours, setLogHours] = useState(0);
   const [logMinutes, setLogMinutes] = useState(0);
+  const [editLogId, setEditLogId] = useState<string | null>(null);
   
   const [localProgress, setLocalProgress] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -98,8 +99,9 @@ export default function ReadingPage() {
       date: format(new Date(), "yyyy-MM-dd"),
       durationMins,
     };
-    await saveReadingLog(user.uid, log);
+    await saveReadingLog(user.uid, log, editLogId || undefined);
     setShowLogInput(false);
+    setEditLogId(null);
     setLogHours(0);
     setLogMinutes(0);
   };
@@ -112,6 +114,12 @@ export default function ReadingPage() {
     if (!user || !confirm("この本を削除してもよろしいですか？記録も失われます。")) return;
     await deleteBook(user.uid, id);
     if (selectedBook?.id === id) setSelectedBook(null);
+  };
+
+  const handleDeleteLog = async (logId: string) => {
+    if (!user || !confirm("この読書記録を削除しますか？")) return;
+    const { deleteReadingLog } = await import("@/lib/firebase/db");
+    await deleteReadingLog(user.uid, logId);
   };
 
   if (loading) return <div className="p-10 text-center animate-pulse">Loading...</div>;
@@ -238,10 +246,31 @@ export default function ReadingPage() {
                     </div>
                   ) : (
                     readingLogs.sort((a,b) => b.date.localeCompare(a.date)).map(log => (
-                      <div key={log.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-xl border border-transparent hover:border-border transition-all">
-                        <div className="font-bold text-sm">{log.date}</div>
-                        <div className="text-primary font-black">
-                          {Math.floor(log.durationMins / 60)}h {log.durationMins % 60}m
+                      <div key={log.id} className="group flex items-center justify-between p-3 bg-muted/20 rounded-xl border border-transparent hover:border-border transition-all">
+                        <div className="flex-1">
+                          <div className="font-bold text-sm">{log.date}</div>
+                          <div className="text-primary font-black text-lg">
+                            {Math.floor(log.durationMins / 60)}h {log.durationMins % 60}m
+                          </div>
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => {
+                              setEditLogId(log.id);
+                              setLogHours(Math.floor(log.durationMins / 60));
+                              setLogMinutes(log.durationMins % 60);
+                              setShowLogInput(true);
+                            }}
+                            className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteLog(log.id)}
+                            className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       </div>
                     ))
@@ -281,7 +310,7 @@ export default function ReadingPage() {
       {showLogInput && selectedBook && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 duration-200">
-            <h2 className="text-lg font-bold mb-2">読書時間を入力</h2>
+            <h2 className="text-lg font-bold mb-2">{editLogId ? "記録の編集" : "読書時間を入力"}</h2>
             <p className="text-xs font-bold text-primary mb-6 truncate">{selectedBook.title}</p>
             
             <div className="flex gap-4 mb-8">
@@ -306,8 +335,8 @@ export default function ReadingPage() {
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => setShowLogInput(false)} className="flex-1 py-3 font-bold text-muted-foreground hover:bg-muted rounded-xl transition-all">キャンセル</button>
-              <button onClick={handleSaveLog} className="flex-1 py-3 font-bold bg-primary text-white rounded-xl shadow-lg hover:brightness-110 transition-all">記録する</button>
+              <button onClick={() => { setShowLogInput(false); setEditLogId(null); }} className="flex-1 py-3 font-bold text-muted-foreground hover:bg-muted rounded-xl transition-all">キャンセル</button>
+              <button onClick={handleSaveLog} className="flex-1 py-3 font-bold bg-primary text-white rounded-xl shadow-lg hover:brightness-110 transition-all">{editLogId ? "更新する" : "記録する"}</button>
             </div>
           </div>
         </div>
