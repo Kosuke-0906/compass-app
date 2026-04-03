@@ -306,7 +306,13 @@ export default function StudyPage() {
               教材ごとの記録
             </h2>
             <button 
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                setEditMaterialId(null);
+                setNewTitle("");
+                setNewCategory("");
+                setNewColor(PALETTE_COLORS[0]);
+                setIsModalOpen(true);
+              }}
               className="text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1"
             >
               <Plus size={14} /> 新しい教材
@@ -449,7 +455,7 @@ export default function StudyPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center items-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div 
-            className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-5 sm:slide-in-from-bottom-2 duration-300"
+            className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-5 sm:slide-in-from-bottom-2 duration-300 max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
