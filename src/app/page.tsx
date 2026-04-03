@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense, useEffect } from "react";
+import { useState, Suspense, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, Circle, Smartphone, BookOpen, Moon, Sun, Edit3, Plus, RotateCw, ListTodo, CalendarClock, CalendarDays, Utensils, ChevronLeft, ChevronRight, ChevronDown, Flag, Trash2 } from "lucide-react";
@@ -11,7 +11,8 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import {
   saveRoutine, deleteRoutine, toggleRoutineCompletion, RoutineItem,
-  saveTodo, deleteTodo, toggleTodoCompletion, TodoItem
+  saveTodo, deleteTodo, toggleTodoCompletion, TodoItem,
+  getDailyLog, saveDailyLog
 } from "@/lib/firebase/db";
 
 function DailyContent() {
@@ -31,12 +32,58 @@ function DailyContent() {
   const [wakeTime, setWakeTime] = useState("07:00");
   const [bedTime, setBedTime] = useState("23:30");
   const [isSleepExpanded, setIsSleepExpanded] = useState(false);
+  const [schedule, setSchedule] = useState("");
+  const [dinner, setDinner] = useState("");
+  const [diary, setDiary] = useState("");
   
   const [targetStudyMins, setTargetStudyMins] = useState(120);
   const [todayStudyMins, setTodayStudyMins] = useState<number | null>(null);
+  const [dailyLogLoaded, setDailyLogLoaded] = useState(false);
 
   const { user } = useAuth();
   const todayStr = format(displayDate, "yyyy-MM-dd");
+
+  // DailyLogをFirebaseから読み込み
+  useEffect(() => {
+    if (!user) return;
+    setDailyLogLoaded(false);
+    getDailyLog(user.uid, todayStr).then((log) => {
+      if (log) {
+        setSchedule(log.schedule || "");
+        setWakeTime(log.wakeTime || "07:00");
+        setBedTime(log.bedTime || "23:30");
+        setDinner(log.dinner || "");
+        setDiary(log.diary || "");
+        setProgressPercent(log.fulfillment ?? 50);
+      } else {
+        setSchedule("");
+        setDinner("");
+        setDiary("");
+        setProgressPercent(50);
+        setWakeTime("07:00");
+        setBedTime("23:30");
+      }
+      setDailyLogLoaded(true);
+    });
+  }, [user, todayStr]);
+
+  // DailyLogをFirebaseに自動保存（デバウンス）
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedSave = useCallback(() => {
+    if (!user || !dailyLogLoaded) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveDailyLog(user.uid, todayStr, {
+        schedule, wakeTime, bedTime, dinner, diary,
+        fulfillment: progressPercent,
+      });
+    }, 800);
+  }, [user, todayStr, schedule, wakeTime, bedTime, dinner, diary, progressPercent, dailyLogLoaded]);
+
+  useEffect(() => {
+    debouncedSave();
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [debouncedSave]);
 
   // ルーティンをFirebaseからリアルタイム取得
   useEffect(() => {
@@ -193,6 +240,8 @@ function DailyContent() {
           {dict.daily.todaySchedule}
         </h2>
         <textarea 
+          value={schedule}
+          onChange={e => setSchedule(e.target.value)}
           placeholder={dict.daily.todaySchedulePlaceholder}
           className="w-full h-24 bg-white border border-border rounded-xl p-4 resize-none shadow-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
         ></textarea>
@@ -406,6 +455,8 @@ function DailyContent() {
               </label>
               <input 
                 type="text" 
+                value={dinner}
+                onChange={e => setDinner(e.target.value)}
                 placeholder={dict.daily.dinnerPlaceholder}
                 className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium"
               />
@@ -415,6 +466,8 @@ function DailyContent() {
           <div className="pt-4 border-t border-border">
             <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-2"><Edit3 size={14}/> {dict.daily.diary}</label>
             <textarea 
+              value={diary}
+              onChange={e => setDiary(e.target.value)}
               placeholder={dict.daily.diaryPlaceholder}
               className="w-full h-32 bg-background border border-border rounded-xl p-4 resize-none focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
             ></textarea>

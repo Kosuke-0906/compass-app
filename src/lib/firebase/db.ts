@@ -20,15 +20,15 @@ export interface StudyLog {
 
 export interface DailyLog {
   date: string; // YYYY-MM-DD (Document ID)
+  schedule: string;
   wakeTime: string;
   bedTime: string;
-  routines: string[]; // または詳細な型
+  routines: string[];
   todos: string[];
   dinner: string;
   diary: string;
   fulfillment: number;
   phoneTimeMins: number;
-  // studyTimeMins is derived from StudyLogs, but we can cache it here if needed
 }
 
 export interface MemoTag {
