@@ -39,56 +39,107 @@ function DailyContent() {
   const [targetStudyMins, setTargetStudyMins] = useState(120);
   const [todayStudyMins, setTodayStudyMins] = useState<number | null>(null);
   const [dailyLogLoaded, setDailyLogLoaded] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const { user } = useAuth();
   const todayStr = format(displayDate, "yyyy-MM-dd");
 
-  // onSnapshotの更新でsaveが走るのを防ぐフラグ
-  const skipSaveRef = useRef(true);
+  // 保存済みの最新データを保持（無限ループ防止と差分検知）
+  const lastSavedRef = useRef<string>("");
 
-  // DailyLogをonSnapshotでリアルタイム取得（メモと同じ方式）
+  // サーバーに即時保存する関数
+  const saveImmediate = async (data: any) => {
+    if (!user) return;
+    const dataStr = JSON.stringify(data);
+    if (dataStr === lastSavedRef.current) return;
+    
+    try {
+      setIsSyncing(true);
+      lastSavedRef.current = dataStr;
+      await saveDailyLog(user.uid, todayStr, data);
+    } catch (err) {
+      console.error("[Compass] Save error:", err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // DailyLogをonSnapshotでリアルタイム取得
   useEffect(() => {
     if (!user) return;
-    skipSaveRef.current = true;
     setDailyLogLoaded(false);
 
     const docRef = doc(db, `users/${user.uid}/dailyLogs`, todayStr);
     const unsub = onSnapshot(docRef, (snapshot) => {
       if (snapshot.exists()) {
         const log = snapshot.data();
-        // onSnapshotからの更新時はsaveをスキップ
-        skipSaveRef.current = true;
-        setSchedule(log.schedule || "");
-        setWakeTime(log.wakeTime || "07:00");
-        setBedTime(log.bedTime || "23:30");
-        setDinner(log.dinner || "");
-        setDiary(log.diary || "");
-        setProgressPercent(log.fulfillment ?? 50);
+        const dataForRef = {
+          schedule: log.schedule || "",
+          wakeTime: log.wakeTime || "07:00",
+          bedTime: log.bedTime || "23:30",
+          dinner: log.dinner || "",
+          diary: log.diary || "",
+          fulfillment: log.fulfillment ?? 50
+        };
+        
+        const dataStr = JSON.stringify(dataForRef);
+        // 自分が保存した直後の更新ならスキップ
+        if (dataStr !== lastSavedRef.current) {
+          lastSavedRef.current = dataStr;
+          setSchedule(dataForRef.schedule);
+          setWakeTime(dataForRef.wakeTime);
+          setBedTime(dataForRef.bedTime);
+          setDinner(dataForRef.dinner);
+          setDiary(dataForRef.diary);
+          setProgressPercent(dataForRef.fulfillment);
+        }
       }
       setDailyLogLoaded(true);
-      // 次のレンダー後にsaveを有効にする
-      setTimeout(() => { skipSaveRef.current = false; }, 100);
     });
 
     return () => unsub();
   }, [user, todayStr]);
 
-  // DailyLogをFirebaseに自動保存（デバウンス）
+  // DailyLogをFirebaseに自動保存（デバウンス + アンマウント保護）
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (!user || !dailyLogLoaded || skipSaveRef.current) return;
+    if (!user || !dailyLogLoaded) return;
+    
+    const currentData = { schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent };
+    const currentDataStr = JSON.stringify(currentData);
+    
+    // 変更がない場合は何もしない
+    if (currentDataStr === lastSavedRef.current) {
+      setIsSyncing(false);
+      return;
+    }
+
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setIsSyncing(true);
+    
     saveTimerRef.current = setTimeout(() => {
-      console.log("[Compass] Saving DailyLog:", todayStr);
-      saveDailyLog(user.uid, todayStr, {
-        schedule, wakeTime, bedTime, dinner, diary,
-        fulfillment: progressPercent,
-      });
-      saveTimerRef.current = null;
-    }, 500);
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+      saveImmediate(currentData);
+    }, 1000);
+
+    // アンマウント時（ページ移動時）に未保存分があれば強制保存
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveImmediate(currentData);
+      }
+    };
   }, [user, todayStr, dailyLogLoaded, schedule, wakeTime, bedTime, dinner, diary, progressPercent]);
+
+  // ブラウザを閉じる際やリロード時の保護
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const currentData = { schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent };
+      saveImmediate(currentData);
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [user, todayStr, schedule, wakeTime, bedTime, dinner, diary, progressPercent]);
 
   // ルーティンをFirebaseからリアルタイム取得
   useEffect(() => {
@@ -223,7 +274,15 @@ function DailyContent() {
   const clampRate = Math.min(achievementRate, 100);
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-10 animate-in fade-in zoom-in-95 duration-500 pb-24">
+    <div className="p-6 max-w-2xl mx-auto space-y-10 animate-in fade-in zoom-in-95 duration-500 pb-24 relative">
+      {/* 控えめな同期インジケーター */}
+      <div className="fixed bottom-20 right-6 z-50">
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 backdrop-blur-md border border-border shadow-sm transition-all duration-500 ${isSyncing ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Saving...</span>
+        </div>
+      </div>
+
       <header>
         <div className="flex items-end gap-3 mt-1 mb-4 flex-wrap">
           <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
