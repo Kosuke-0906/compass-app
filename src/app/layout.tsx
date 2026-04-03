@@ -35,7 +35,6 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 import { LanguageProvider } from "@/context/LanguageContext";
-import { LanguageToggle } from "@/components/LanguageToggle";
 import { BottomNav } from "@/components/BottomNav";
 import { AuthProvider } from "@/context/AuthContext";
 
@@ -52,7 +51,6 @@ export default function RootLayout({
       <body className="flex flex-col h-[100dvh] bg-background text-foreground overflow-hidden">
         <AuthProvider>
           <LanguageProvider>
-            <LanguageToggle />
             <main className="flex-1 overflow-y-auto pb-20">
               {children}
             </main>

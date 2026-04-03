@@ -25,14 +25,12 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleLanguage = () => {
-    const newLang = language === 'ja' ? 'en' : 'ja';
-    setLanguage(newLang);
-    localStorage.setItem('compass_language', newLang);
+    // 言語切り替えを無効化（日本語固定）
   };
 
   // サーバーサイド・初回Hydration時のチラつき防止のため
   return (
-    <LanguageContext.Provider value={{ language, toggleLanguage, dict: dictionaries[language] }}>
+    <LanguageContext.Provider value={{ language: 'ja', toggleLanguage, dict: dictionaries['ja'] }}>
       <div className="contents" style={{ visibility: mounted ? 'visible' : 'hidden' }}>
         {children}
       </div>

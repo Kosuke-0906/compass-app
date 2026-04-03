@@ -48,6 +48,15 @@ export interface Memo {
   updatedAt?: Timestamp | FieldValue | null;
 }
 
+export interface Goal {
+  id: string;
+  title: string;
+  type: 'year' | 'month' | 'longterm';
+  date: string; // YYYY-MM-DD
+  isCompleted: boolean;
+  createdAt: Timestamp | FieldValue | null;
+}
+
 // ====== Study Materials (教材管理) ======
 
 export const getStudyMaterials = async (userId: string): Promise<StudyMaterial[]> => {
@@ -154,4 +163,32 @@ export const saveMemoTag = async (userId: string, tag: Omit<MemoTag, 'id'>, tagI
 export const deleteMemoTag = async (userId: string, tagId: string) => {
   if (!userId) throw new Error("No user ID");
   await deleteDoc(doc(db, `users/${userId}/memoTags`, tagId));
+};
+
+// ====== Goals (目標管理) ======
+
+export const saveGoal = async (userId: string, goal: Omit<Goal, 'id' | 'createdAt'>, goalId?: string) => {
+  if (!userId) throw new Error("No user ID");
+  const ref = goalId 
+    ? doc(db, `users/${userId}/goals`, goalId) 
+    : doc(collection(db, `users/${userId}/goals`));
+  
+  const data: any = { ...goal };
+  if (!goalId) {
+    data.createdAt = serverTimestamp();
+  }
+  
+  await setDoc(ref, data, { merge: true });
+  return ref.id;
+};
+
+export const deleteGoal = async (userId: string, goalId: string) => {
+  if (!userId) throw new Error("No user ID");
+  await deleteDoc(doc(db, `users/${userId}/goals`, goalId));
+};
+
+export const toggleGoalCompletion = async (userId: string, goalId: string, isCompleted: boolean) => {
+  if (!userId || !goalId) throw new Error("Missing ID");
+  const ref = doc(db, `users/${userId}/goals`, goalId);
+  await updateDoc(ref, { isCompleted });
 };

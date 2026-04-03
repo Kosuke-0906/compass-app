@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/context/AuthContext";
+import { collection, query, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
+import { Goal } from "@/lib/firebase/db";
 import { CalendarDays, Target, Flag, Mountain, Plus } from "lucide-react";
 import { ja, enUS } from "date-fns/locale";
 
@@ -17,6 +21,20 @@ export default function CalendarPage() {
   
   // 今カレンダーで見ている月 (Month changeに対応するため)
   const [viewMonth, setViewMonth] = useState<Date>(new Date());
+
+  // 目標データの取得
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, `users/${user.uid}/goals`));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Goal));
+      setGoals(fetched);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   const handleDaySelect = (day: Date | undefined) => {
     if (day) {
@@ -29,41 +47,32 @@ export default function CalendarPage() {
     setViewMonth(month);
   };
 
-  const mockTargets: any[] = [];
+  // 表示中の月に該当する目標をフィルタリング
+  const viewYear = viewMonth.getFullYear();
+  const viewMonthIdx = viewMonth.getMonth(); // 0-11
+
+  // 今年の目標
+  const yearGoals = goals.filter(g => g.type === 'year');
+  // 今月の目標 (簡易的に、現在見ている月のものを出す)
+  // 本来は保存時にどの月の目標か指定すべきだが、現状は作成日の月で簡易フィルタリング
+  const monthGoals = goals.filter(g => {
+    if (g.type !== 'month') return false;
+    const gDate = new Date(g.date);
+    return gDate.getFullYear() === viewYear && gDate.getMonth() === viewMonthIdx;
+  });
+  // 長期ターゲット
+  const longTermGoals = goals.filter(g => g.type === 'longterm');
 
   const CustomDayButton = (props: any) => {
     const { day, modifiers, className, ...buttonProps } = props;
     const date = day.date;
-    const isFuture = date > new Date();
-    const mockFulfillment = null; 
     
-    // Targetの期日と合致する日だけ強調する
-    const target = mockTargets.find(t => 
-      t.date.getFullYear() === date.getFullYear() && 
-      t.date.getMonth() === date.getMonth() && 
-      t.date.getDate() === date.getDate()
-    );
-
-    let fulfillmentColorClass = "text-muted-foreground";
-    if (mockFulfillment) {
-      if (mockFulfillment >= 80) fulfillmentColorClass = "text-red-500 font-bold";
-      else if (mockFulfillment >= 50) fulfillmentColorClass = "text-amber-500 font-semibold";
-      else fulfillmentColorClass = "text-blue-500";
-    }
-
-    const dateNumberClass = target ? `font-extrabold ${target.color} text-lg` : "text-sm font-medium";
-
     return (
       <button 
         {...buttonProps} 
         className={`${className || ''} flex flex-col items-center justify-center p-1 w-full h-full relative focus:outline-none focus:ring-2 focus:ring-primary/50`}
       >
-        <span className={dateNumberClass}>{date.getDate()}</span>
-        {mockFulfillment !== null && (
-          <span className={`text-[10px] mt-0.5 leading-none ${fulfillmentColorClass}`}>
-            {mockFulfillment}%
-          </span>
-        )}
+        <span className="text-sm font-medium">{date.getDate()}</span>
       </button>
     );
   };
@@ -78,7 +87,7 @@ export default function CalendarPage() {
         </div>
         <h1 className="text-3xl font-extrabold text-foreground tracking-tight">{dict.common.calendar}</h1>
         <p className="text-sm text-muted-foreground mt-2 font-medium">
-          {language === 'ja' ? '日付をタップして確認・入力へ' : 'Tap a date to view or edit records'}
+          日付をタップして確認・入力へ
         </p>
       </header>
 
@@ -87,11 +96,11 @@ export default function CalendarPage() {
         <style>{`
           .rdp { --rdp-accent-color: var(--primary); --rdp-background-color: var(--muted); margin: 0; }
           .rdp-cell {
-            padding: 0.5rem 0.25rem; /* セル間に縦の余白を追加して全体的に広くする */
+            padding: 0.5rem 0.25rem;
           }
           .rdp-day { 
             position: relative; 
-            height: 3.5rem; /* セル自体も縦長にする */
+            height: 3.5rem;
             width: 3.5rem;
           }
           .rdp-day_button {
@@ -100,10 +109,10 @@ export default function CalendarPage() {
             border-radius: 0.5rem;
           }
           .rdp-caption_dropdowns {
-            gap: 0.5rem; /* 年と月のドロップダウン間の余白 */
+            gap: 0.5rem;
           }
           .rdp-caption {
-            margin-bottom: 1.5rem; /* カレンダーヘッダー(年月)と曜日の間の余白を追加 */
+            margin-bottom: 1.5rem;
           }
         `}</style>
         <DayPicker
@@ -113,7 +122,7 @@ export default function CalendarPage() {
           month={viewMonth}
           onMonthChange={handleMonthChange}
           className="bg-white rounded-xl mx-auto"
-          locale={language === 'ja' ? ja : enUS}
+          locale={ja}
           captionLayout="dropdown"
           fromYear={2020}
           toYear={2030}
@@ -122,26 +131,69 @@ export default function CalendarPage() {
           } as any}
         />
         <div className="mt-8 flex items-center justify-center gap-2 text-xs font-medium text-muted-foreground bg-muted/50 px-4 py-2 rounded-full">
-           {language === 'ja' ? '日付の下の数字はその日の「充実度」を表します。' : 'Numbers below dates show daily fulfillment.'}
+           日付の下の数字はその日の「充実度」を表します。
         </div>
       </section>
 
-      {/* Dynamic Archives Section (Shown for past/specific months) */}
+      {/* Dynamic Archives Section */}
       <section className="bg-white p-5 rounded-2xl shadow-sm border border-border animate-in slide-in-from-bottom-4 duration-500">
         <h2 className="font-semibold text-lg flex items-center gap-2 mb-4">
           <CalendarDays className="text-primary" size={20}/> 
-          {language === 'ja' ? `${format(viewMonth, 'yyyy年M月')} の目標・記録` : `${format(viewMonth, 'MMMM yyyy')} Records & Goals`}
+          {format(viewMonth, 'yyyy年M月')} の目標・記録
         </h2>
         
         <div className="space-y-4">
-          <div className="text-center p-8 border border-dashed rounded-2xl border-border bg-muted/5">
-            <p className="text-sm text-muted-foreground font-medium mb-3">
-              {language === 'ja' ? '目標が設定されていません' : 'No goals set for this period'}
-            </p>
-            <Link href="/goals" className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-full text-xs font-bold hover:bg-primary/90 transition-all shadow-sm">
-               <Plus size={14} /> {language === 'ja' ? '目標を設定する' : 'Set a Goal'}
-            </Link>
-          </div>
+          {yearGoals.length === 0 && monthGoals.length === 0 && longTermGoals.length === 0 ? (
+            <div className="text-center p-8 border border-dashed rounded-2xl border-border bg-muted/5">
+              <p className="text-sm text-muted-foreground font-medium mb-3">
+                目標が設定されていません
+              </p>
+              <Link href="/goals" className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-full text-xs font-bold hover:bg-primary/90 transition-all shadow-sm">
+                 <Plus size={14} /> 目標を設定する
+              </Link>
+            </div>
+          ) : (
+            <>
+              {/* Year Goals */}
+              {yearGoals.map(g => (
+                <div key={g.id} className="p-4 rounded-xl border border-border shadow-sm flex items-start gap-3 bg-primary/5">
+                  <Target className="text-primary mt-0.5" size={18}/>
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground font-semibold mb-1">{viewYear}年の目標</p>
+                    <p className={`font-bold text-base text-foreground leading-tight ${g.isCompleted ? 'line-through opacity-70' : ''}`}>
+                      {g.title}
+                    </p>
+                  </div>
+                </div>
+              ))}
+
+              {/* Month Goals */}
+              {monthGoals.map(g => (
+                <div key={g.id} className="p-4 rounded-xl border border-border shadow-sm flex items-start gap-3">
+                  <Flag className="text-amber-500 mt-0.5" size={18}/>
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground font-semibold mb-1">{viewMonthIdx + 1}月の目標</p>
+                    <p className={`font-bold text-base text-foreground leading-tight ${g.isCompleted ? 'line-through opacity-70' : ''}`}>
+                      {g.title}
+                    </p>
+                  </div>
+                </div>
+              ))}
+
+              {/* Long Term */}
+              {longTermGoals.map(g => (
+                <div key={g.id} className="p-4 rounded-xl border border-border shadow-sm flex items-start gap-3">
+                  <Mountain className="text-purple-500 mt-0.5" size={18}/>
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground font-semibold mb-1">長期ターゲット</p>
+                    <p className={`font-bold text-base text-foreground leading-tight ${g.isCompleted ? 'line-through opacity-70' : ''}`}>
+                      {g.title}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
         
       </section>
