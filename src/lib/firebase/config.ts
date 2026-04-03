@@ -18,18 +18,13 @@ const auth = getAuth(app);
 
 // Firestoreの初期化（オフラインキャッシュ付き・現行のv10推奨API）
 let db: Firestore;
-try {
-  if (getApps().length === 0) {
-    const app = initializeApp(firebaseConfig);
-    db = initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-    });
-  } else {
-    const app = getApp();
-    db = getFirestore(app);
-  }
-} catch (e) {
-  db = getFirestore();
+if (getApps().length === 1) {
+  // 初回初期化時のみ
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  });
+} else {
+  db = getFirestore(app);
 }
 
 export { app, auth, db };

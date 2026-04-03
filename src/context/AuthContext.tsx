@@ -24,25 +24,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // リダイレクト結果をキャッチ（PWAモード等）
-    const checkRedirect = async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result) {
-          console.log("[Compass] Login via redirect successful:", result.user.email);
-        }
-      } catch (err) {
-        console.error("[Compass] Redirect login error:", err);
-      }
-    };
-    checkRedirect();
+    // リダイレクト結果をキャッチ（PWAモードの場合）
+    getRedirectResult(auth).catch((err) => {
+      console.error("Redirect result error:", err);
+    });
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        console.log("[Compass] Auth state changed: Logged in as", user.email);
-      } else {
-        console.log("[Compass] Auth state changed: Logged out");
-      }
       setUser(user);
       setLoading(false);
     });

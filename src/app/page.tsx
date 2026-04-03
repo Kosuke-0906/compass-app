@@ -39,8 +39,6 @@ function DailyContent() {
   const [targetStudyMins, setTargetStudyMins] = useState(120);
   const [todayStudyMins, setTodayStudyMins] = useState<number | null>(null);
   const [dailyLogLoaded, setDailyLogLoaded] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isFromCache, setIsFromCache] = useState(true);
 
   const { user } = useAuth();
   const todayStr = format(displayDate, "yyyy-MM-dd");
@@ -48,34 +46,28 @@ function DailyContent() {
   // onSnapshotの更新でsaveが走るのを防ぐフラグ
   const skipSaveRef = useRef(true);
 
-  // DailyLogをonSnapshotでリアルタイム取得
+  // DailyLogをonSnapshotでリアルタイム取得（メモと同じ方式）
   useEffect(() => {
     if (!user) return;
     skipSaveRef.current = true;
     setDailyLogLoaded(false);
 
     const docRef = doc(db, `users/${user.uid}/dailyLogs`, todayStr);
-    const unsub = onSnapshot(docRef, { includeMetadataChanges: true }, (snapshot) => {
-      setIsFromCache(snapshot.metadata.fromCache);
-      
+    const unsub = onSnapshot(docRef, (snapshot) => {
       if (snapshot.exists()) {
         const log = snapshot.data();
-        // 外部からの更新（別端末での入力等）のみ状態に反映
-        if (snapshot.metadata.hasPendingWrites) {
-          // 自分が書き込んでいる最中の更新はスキップ
-        } else {
-          skipSaveRef.current = true;
-          if (log.schedule !== undefined) setSchedule(log.schedule || "");
-          if (log.wakeTime !== undefined) setWakeTime(log.wakeTime || "07:00");
-          if (log.bedTime !== undefined) setBedTime(log.bedTime || "23:30");
-          if (log.dinner !== undefined) setDinner(log.dinner || "");
-          if (log.diary !== undefined) setDiary(log.diary || "");
-          if (log.fulfillment !== undefined) setProgressPercent(log.fulfillment ?? 50);
-        }
+        // onSnapshotからの更新時はsaveをスキップ
+        skipSaveRef.current = true;
+        setSchedule(log.schedule || "");
+        setWakeTime(log.wakeTime || "07:00");
+        setBedTime(log.bedTime || "23:30");
+        setDinner(log.dinner || "");
+        setDiary(log.diary || "");
+        setProgressPercent(log.fulfillment ?? 50);
       }
       setDailyLogLoaded(true);
       // 次のレンダー後にsaveを有効にする
-      setTimeout(() => { skipSaveRef.current = false; }, 200);
+      setTimeout(() => { skipSaveRef.current = false; }, 100);
     });
 
     return () => unsub();
@@ -86,33 +78,15 @@ function DailyContent() {
 
   useEffect(() => {
     if (!user || !dailyLogLoaded || skipSaveRef.current) return;
-    
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    
-    saveTimerRef.current = setTimeout(async () => {
-      try {
-        setIsSyncing(true);
-        console.log("[Compass] Saving to server:", todayStr);
-        // タイムアウト付きで保存を実行
-        const savePromise = saveDailyLog(user.uid, todayStr, {
-          schedule, wakeTime, bedTime, dinner, diary,
-          fulfillment: progressPercent,
-        });
-        
-        // 5秒でタイムアウトするようにレースさせる（ネットワークエラー対策）
-        await Promise.race([
-          savePromise,
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000))
-        ]);
-        
-      } catch (err) {
-        console.error("Save error:", err);
-      } finally {
-        setIsSyncing(false);
-        saveTimerRef.current = null;
-      }
-    }, 800); // 0.8秒に調整
-    
+    saveTimerRef.current = setTimeout(() => {
+      console.log("[Compass] Saving DailyLog:", todayStr);
+      saveDailyLog(user.uid, todayStr, {
+        schedule, wakeTime, bedTime, dinner, diary,
+        fulfillment: progressPercent,
+      });
+      saveTimerRef.current = null;
+    }, 500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [user, todayStr, dailyLogLoaded, schedule, wakeTime, bedTime, dinner, diary, progressPercent]);
 
@@ -250,56 +224,18 @@ function DailyContent() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-10 animate-in fade-in zoom-in-95 duration-500 pb-24">
-      <header className="relative">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pt-2">
-          <div className="flex items-end gap-3 flex-wrap">
-            <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
-              {dict.daily.title}
-            </h1>
-            <span className="text-lg text-muted-foreground font-semibold pb-0.5">
-              {format(displayDate, "MM/dd (E)")}
-            </span>
-          </div>
-          
-          <div className="flex items-center gap-3 bg-muted/30 px-3 py-1.5 rounded-2xl border border-border/50">
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight leading-none mb-1">Account</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-foreground truncate max-w-[150px]">
-                  {user?.displayName || user?.email?.split('@')[0] || "User"}
-                </span>
-                <span className="text-[9px] font-mono bg-muted px-1 rounded text-muted-foreground border border-border/50">
-                  ID: {user?.uid.slice(-4)}
-                </span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20 text-primary overflow-hidden shadow-inner">
-              {user?.photoURL ? (
-                <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <CheckCircle2 size={18} />
-              )}
-            </div>
-          </div>
+      <header>
+        <div className="flex items-end gap-3 mt-1 mb-4 flex-wrap">
+          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
+            {dict.daily.title}
+          </h1>
+          <span className="text-lg text-muted-foreground font-semibold pb-0.5">
+            {format(displayDate, "MM/dd (E)")}
+          </span>
         </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <Link href="/calendar" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-border rounded-full text-xs font-semibold text-muted-foreground hover:text-primary hover:border-primary/50 shadow-sm transition-all group">
-            <CalendarDays size={14} className="text-primary/70 group-hover:text-primary transition-colors" /> {dict.daily.selectAnotherDay}
-          </Link>
-          
-          <div className="flex items-center gap-3">
-            <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full shadow-sm bg-white border transition-all ${isFromCache ? 'border-amber-200 text-amber-600' : 'border-emerald-200 text-emerald-600'}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${isFromCache ? 'bg-amber-400' : 'bg-emerald-500'}`}></div>
-              {isFromCache ? "Cache" : "Server"}
-            </div>
-
-            <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full shadow-sm bg-white border transition-all ${isSyncing ? 'border-amber-200 text-amber-600' : 'border-emerald-200 text-emerald-600'}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500'}`}></div>
-              {isSyncing ? "Saving..." : "Synced"}
-            </div>
-          </div>
-        </div>
+        <Link href="/calendar" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-border rounded-full text-xs font-semibold text-muted-foreground hover:text-primary hover:border-primary/50 shadow-sm transition-all group">
+          <CalendarDays size={14} className="text-primary/70 group-hover:text-primary transition-colors" /> {dict.daily.selectAnotherDay}
+        </Link>
       </header>
 
       {/* Today's Schedule */}
