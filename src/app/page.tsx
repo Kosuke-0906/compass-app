@@ -67,23 +67,44 @@ function DailyContent() {
     });
   }, [user, todayStr]);
 
-  // DailyLogをFirebaseに自動保存（デバウンス）
+  // DailyLogをFirebaseに自動保存（デバウンス＋ページ離脱時に即保存）
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const debouncedSave = useCallback(() => {
+  const latestValuesRef = useRef({ schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent });
+
+  // 最新値を常にrefに反映
+  useEffect(() => {
+    latestValuesRef.current = { schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent };
+  }, [schedule, wakeTime, bedTime, dinner, diary, progressPercent]);
+
+  const flushSave = useCallback(() => {
+    if (!user || !dailyLogLoaded) return;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    saveDailyLog(user.uid, todayStr, latestValuesRef.current);
+  }, [user, todayStr, dailyLogLoaded]);
+
+  // 値が変わったら0.8秒後に保存
+  useEffect(() => {
     if (!user || !dailyLogLoaded) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveDailyLog(user.uid, todayStr, {
-        schedule, wakeTime, bedTime, dinner, diary,
-        fulfillment: progressPercent,
-      });
+      saveDailyLog(user.uid, todayStr, latestValuesRef.current);
+      saveTimerRef.current = null;
     }, 800);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [user, todayStr, schedule, wakeTime, bedTime, dinner, diary, progressPercent, dailyLogLoaded]);
 
+  // ページ離脱・リロード時に即保存
   useEffect(() => {
-    debouncedSave();
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [debouncedSave]);
+    const handleBeforeUnload = () => flushSave();
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      flushSave(); // コンポーネントunmount時も即保存
+    };
+  }, [flushSave]);
 
   // ルーティンをFirebaseからリアルタイム取得
   useEffect(() => {
