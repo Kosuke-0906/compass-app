@@ -453,12 +453,12 @@ export default function StudyPage() {
 
       {/* 新機能: カスタムダイアログ（教材追加） */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-center items-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[999] flex flex-col justify-center items-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200 p-4">
           <div 
-            className="bg-white w-[92%] sm:max-w-md sm:rounded-2xl rounded-2xl p-6 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 max-h-[80dvh] overflow-y-auto mb-20 sm:mb-0"
+            className="bg-white w-full sm:max-w-md rounded-2xl p-6 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 max-h-[70dvh] overflow-y-auto outline-none"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-6 sticky top-0 bg-white z-10 pb-2">
               <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
                 <Bookmark className="text-primary" size={22}/> {editMaterialId ? "教材の編集" : "教材の追加"}
               </h3>
@@ -481,7 +481,7 @@ export default function StudyPage() {
               </div>
             </div>
 
-            <div className="space-y-5">
+            <div className="space-y-6 pb-32">
               {/* 教材名 */}
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
