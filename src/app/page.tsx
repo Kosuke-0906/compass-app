@@ -88,22 +88,30 @@ function DailyContent() {
     if (!user || !dailyLogLoaded || skipSaveRef.current) return;
     
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    setIsSyncing(true);
     
     saveTimerRef.current = setTimeout(async () => {
       try {
+        setIsSyncing(true);
         console.log("[Compass] Saving to server:", todayStr);
-        await saveDailyLog(user.uid, todayStr, {
+        // タイムアウト付きで保存を実行
+        const savePromise = saveDailyLog(user.uid, todayStr, {
           schedule, wakeTime, bedTime, dinner, diary,
           fulfillment: progressPercent,
         });
-        setIsSyncing(false);
+        
+        // 5秒でタイムアウトするようにレースさせる（ネットワークエラー対策）
+        await Promise.race([
+          savePromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000))
+        ]);
+        
       } catch (err) {
         console.error("Save error:", err);
       } finally {
+        setIsSyncing(false);
         saveTimerRef.current = null;
       }
-    }, 1000); // 同期の安定のため1秒に調整
+    }, 800); // 0.8秒に調整
     
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [user, todayStr, dailyLogLoaded, schedule, wakeTime, bedTime, dinner, diary, progressPercent]);
