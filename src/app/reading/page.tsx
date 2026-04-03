@@ -198,7 +198,10 @@ export default function ReadingPage() {
                         handleUpdateProgress(book, localProgress[book.id] ?? book.progress);
                         // Don't delete immediately; wait for onSnapshot to confirm sync
                       }}
-                      className="w-full h-2 bg-muted rounded-full appearance-none outline-none cursor-pointer accent-primary"
+                      className="w-full h-3 bg-muted rounded-full appearance-none outline-none cursor-pointer accent-primary"
+                      style={{
+                        backgroundImage: `linear-gradient(to right, var(--primary) 0%, var(--primary) ${localProgress[book.id] ?? book.progress}%, transparent ${localProgress[book.id] ?? book.progress}%, transparent 100%)`
+                      }}
                     />
                   </div>
                 </div>
@@ -262,7 +265,7 @@ export default function ReadingPage() {
                             {Math.floor(log.durationMins / 60)}h {log.durationMins % 60}m
                           </div>
                         </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex gap-1 transition-opacity">
                           <button 
                             onClick={() => {
                               setEditLogId(log.id);

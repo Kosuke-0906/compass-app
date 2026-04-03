@@ -72,6 +72,9 @@ function DailyContent() {
   const [diary, setDiary] = useState("");
   const [phoneTimeMins, setPhoneTimeMins] = useState(0);
   
+  const [expandedRoutineId, setExpandedRoutineId] = useState<string | null>(null);
+  const [expandedTodoId, setExpandedTodoId] = useState<string | null>(null);
+  
   const [targetStudyMins, setTargetStudyMins] = useState(120);
   const [todayStudyMins, setTodayStudyMins] = useState<number | null>(null);
   const [todayReadingMins, setTodayReadingMins] = useState<number | null>(null);
@@ -260,14 +263,14 @@ function DailyContent() {
 
   const handleAddRoutine = async () => {
     if (!user || !newRoutineText.trim()) return;
-    await saveRoutine(user.uid, { text: newRoutineText.trim(), date: todayStr, completed: false });
+    await saveRoutine(user.uid, { text: newRoutineText.trim(), date: todayStr, completed: false, achievement: 1 });
     setNewRoutineText("");
     setShowRoutineInput(false);
   };
 
   const handleAddTodo = async () => {
     if (!user || !newTodoText.trim()) return;
-    await saveTodo(user.uid, { text: newTodoText.trim(), date: todayStr, completed: false });
+    await saveTodo(user.uid, { text: newTodoText.trim(), date: todayStr, completed: false, achievement: 1 });
     setNewTodoText("");
     setShowTodoInput(false);
   };
@@ -412,51 +415,88 @@ function DailyContent() {
         </div>
         <div className="space-y-3">
           {routines.map((routine) => {
-             const currentAchievement = routine.achievement || (routine.completed ? 5 : 0);
+             const currentAchievement = routine.achievement || (routine.completed ? 5 : 1);
+             const isExpanded = expandedRoutineId === routine.id;
+             
+             const getAchievementColor = (level: number) => {
+               if (level === 1) return "bg-red-500";
+               if (level === 2) return "bg-orange-400";
+               if (level === 3) return "bg-yellow-500";
+               if (level === 4) return "bg-green-500";
+               if (level === 5) return "bg-blue-500";
+               return "bg-muted";
+             };
+
+             const getAchievementBorder = (level: number) => {
+               if (level === 1) return "border-red-500/20";
+               if (level === 2) return "border-orange-400/20";
+               if (level === 3) return "border-yellow-500/20";
+               if (level === 4) return "border-green-500/20";
+               if (level === 5) return "border-blue-500/20";
+               return "border-border";
+             };
+
              return (
                <div 
                  key={routine.id} 
-                 className={`flex flex-col gap-3 p-4 rounded-2xl transition-all border ${
-                   currentAchievement >= 1 
-                     ? "bg-primary/5 border-primary/20 shadow-sm" 
-                     : "bg-white border-border shadow-sm"
+                 className={`flex flex-col gap-3 p-4 rounded-2xl transition-all border shadow-sm ${
+                   isExpanded ? "bg-primary/[0.03] " + getAchievementBorder(currentAchievement) : "bg-white border-border"
                  }`}
                >
-                 <div className="flex items-center gap-3">
-                   <span className="flex-1 text-base font-bold text-foreground leading-tight">
+                 {/* Compact Header */}
+                 <div 
+                   className="flex items-center gap-3 cursor-pointer"
+                   onClick={() => setExpandedRoutineId(isExpanded ? null : routine.id)}
+                 >
+                   <span className={`flex-1 text-base font-bold text-foreground leading-tight ${!isExpanded ? "truncate" : ""}`}>
                      {routine.text}
                    </span>
-                   <button onClick={() => handleDeleteRoutine(routine.id)} className="text-muted-foreground hover:text-red-500 p-1 transition-colors">
+                   
+                   {!isExpanded && (
+                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm ${getAchievementColor(currentAchievement)}`}>
+                        {currentAchievement}
+                     </div>
+                   )}
+
+                   <button onClick={(e) => { e.stopPropagation(); handleDeleteRoutine(routine.id); }} className="text-muted-foreground hover:text-red-500 p-1 transition-colors">
                      <Trash2 size={16} />
                    </button>
                  </div>
                  
-                 <div className="flex flex-wrap items-center gap-2">
-                   {[1, 2, 3, 4, 5].map((level) => (
-                     <button
-                       key={level}
-                       onClick={() => handleUpdateRoutine(routine, { achievement: level })}
-                       className={`w-8 h-8 rounded-full text-xs font-black transition-all border-2 ${
-                         currentAchievement === level
-                           ? "bg-primary border-primary text-white scale-110 shadow-md"
-                           : "bg-background border-border text-muted-foreground hover:border-primary/50"
-                       }`}
-                     >
-                       {level}
-                     </button>
-                   ))}
-                   <div className="ml-auto text-[10px] font-bold text-muted-foreground uppercase tracking-widest bg-muted/30 px-2 py-1 rounded italic">Level</div>
-                 </div>
+                 {/* Expanded Content */}
+                 {isExpanded && (
+                   <div className="space-y-4 pt-2 animate-in slide-in-from-top-2 duration-200">
+                     <div className="flex flex-wrap items-center gap-2">
+                       {[1, 2, 3, 4, 5].map((level) => (
+                         <button
+                           key={level}
+                           onClick={() => {
+                             handleUpdateRoutine(routine, { achievement: level });
+                             setExpandedRoutineId(null); // Auto-collapse
+                           }}
+                           className={`w-9 h-9 rounded-full text-xs font-black transition-all border-2 ${
+                             currentAchievement === level
+                               ? "text-white scale-110 shadow-md " + getAchievementColor(level) + " " + getAchievementBorder(level)
+                               : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                           }`}
+                         >
+                           {level}
+                         </button>
+                       ))}
+                       <div className="ml-auto text-[10px] font-bold text-muted-foreground uppercase tracking-widest bg-muted/30 px-2 py-1 rounded italic">Level</div>
+                     </div>
 
-                 <div className="relative mt-1">
-                   <input 
-                     type="text" 
-                     value={routine.comment || ""}
-                     onChange={(e) => handleUpdateRoutine(routine, { comment: e.target.value })}
-                     placeholder="コメント・振り返り..."
-                     className="w-full bg-transparent border-b border-border/50 focus:border-primary py-1 text-xs outline-none transition-colors font-medium text-foreground/80"
-                   />
-                 </div>
+                     <div className="relative">
+                       <input 
+                         type="text" 
+                         value={routine.comment || ""}
+                         onChange={(e) => handleUpdateRoutine(routine, { comment: e.target.value })}
+                         placeholder="コメント・振り返り..."
+                         className="w-full bg-transparent border-b border-border/50 focus:border-primary py-1 text-xs outline-none transition-colors font-medium text-foreground/80"
+                       />
+                     </div>
+                   </div>
+                 )}
                </div>
              );
            })}
@@ -492,50 +532,76 @@ function DailyContent() {
         </div>
         <div className="space-y-3">
           {todos.map((todo) => {
-             const currentAchievement = todo.achievement || (todo.completed ? 5 : 0);
+             const currentAchievement = todo.achievement || (todo.completed ? 5 : 1);
+             const isExpanded = expandedTodoId === todo.id;
+
+             const getLevelColor = (level: number) => {
+               if (level === 1) return "bg-red-500";
+               if (level === 2) return "bg-orange-400";
+               if (level === 3) return "bg-yellow-500";
+               if (level === 4) return "bg-green-500";
+               if (level === 5) return "bg-blue-500";
+               return "bg-muted";
+             };
+
              return (
                <div 
                  key={todo.id} 
-                 className={`flex flex-col gap-3 p-4 rounded-2xl transition-all border ${
-                   currentAchievement >= 1 
-                     ? "bg-slate-50 border-border shadow-sm text-foreground" 
-                     : "bg-white border-border shadow-sm"
+                 className={`flex flex-col gap-3 p-4 rounded-2xl transition-all border shadow-sm ${
+                   isExpanded ? "bg-slate-50 border-border" : "bg-white border-border"
                  }`}
                >
-                 <div className="flex items-center gap-3">
-                   <span className="flex-1 text-base font-bold text-foreground leading-tight">
+                 <div 
+                   className="flex items-center gap-3 cursor-pointer"
+                   onClick={() => setExpandedTodoId(isExpanded ? null : todo.id)}
+                 >
+                   <span className={`flex-1 text-base font-bold text-foreground leading-tight ${!isExpanded ? "truncate" : ""}`}>
                      {todo.text}
                    </span>
-                   <button onClick={() => handleDeleteTodo(todo.id)} className="text-muted-foreground hover:text-red-500 p-1 transition-colors">
+
+                   {!isExpanded && (
+                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm ${getLevelColor(currentAchievement)}`}>
+                        {currentAchievement}
+                     </div>
+                   )}
+
+                   <button onClick={(e) => { e.stopPropagation(); handleDeleteTodo(todo.id); }} className="text-muted-foreground hover:text-red-500 p-1 transition-colors">
                      <Trash2 size={16} />
                    </button>
                  </div>
 
-                 <div className="flex flex-wrap items-center gap-2">
-                   {[1, 2, 3, 4, 5].map((level) => (
-                     <button
-                       key={level}
-                       onClick={() => handleUpdateTodo(todo, { achievement: level })}
-                       className={`w-8 h-8 rounded-full text-xs font-black transition-all border-2 ${
-                         currentAchievement === level
-                           ? "bg-primary border-primary text-white scale-110 shadow-md"
-                           : "bg-background border-border text-muted-foreground hover:border-primary/50"
-                       }`}
-                     >
-                       {level}
-                     </button>
-                   ))}
-                 </div>
+                 {isExpanded && (
+                   <div className="space-y-4 pt-2 animate-in slide-in-from-top-2 duration-200">
+                     <div className="flex flex-wrap items-center gap-2">
+                       {[1, 2, 3, 4, 5].map((level) => (
+                         <button
+                           key={level}
+                           onClick={() => {
+                             handleUpdateTodo(todo, { achievement: level });
+                             setExpandedTodoId(null);
+                           }}
+                           className={`w-9 h-9 rounded-full text-xs font-black transition-all border-2 ${
+                             currentAchievement === level
+                               ? "text-white scale-110 shadow-md " + getLevelColor(level)
+                               : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                           }`}
+                         >
+                           {level}
+                         </button>
+                       ))}
+                     </div>
 
-                 <div className="relative mt-1">
-                   <input 
-                     type="text" 
-                     value={todo.comment || ""}
-                     onChange={(e) => handleUpdateTodo(todo, { comment: e.target.value })}
-                     placeholder="メモ..."
-                     className="w-full bg-transparent border-b border-border/50 focus:border-primary py-1 text-xs outline-none transition-colors font-medium text-foreground/70"
-                   />
-                 </div>
+                     <div className="relative">
+                       <input 
+                         type="text" 
+                         value={todo.comment || ""}
+                         onChange={(e) => handleUpdateTodo(todo, { comment: e.target.value })}
+                         placeholder="メモ..."
+                         className="w-full bg-transparent border-b border-border/50 focus:border-primary py-1 text-xs outline-none transition-colors font-medium text-foreground/70"
+                       />
+                     </div>
+                   </div>
+                 )}
                </div>
              );
            })}
