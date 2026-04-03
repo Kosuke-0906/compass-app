@@ -70,7 +70,7 @@ function DailyContent() {
     setDailyLogLoaded(false);
 
     const docRef = doc(db, `users/${user.uid}/dailyLogs`, todayStr);
-    const unsub = onSnapshot(docRef, (snapshot) => {
+    const unsub = onSnapshot(docRef, { includeMetadataChanges: true }, (snapshot) => {
       if (snapshot.exists()) {
         const log = snapshot.data();
         const dataForRef = {
@@ -83,8 +83,8 @@ function DailyContent() {
         };
         
         const dataStr = JSON.stringify(dataForRef);
-        // 自分が保存した直後の更新ならスキップ
-        if (dataStr !== lastSavedRef.current) {
+        // 自分が保存した直後の更新や、現在自分の端末で入力中の書き込みであれば反映をスキップ
+        if (dataStr !== lastSavedRef.current && !snapshot.metadata.hasPendingWrites) {
           lastSavedRef.current = dataStr;
           setSchedule(dataForRef.schedule);
           setWakeTime(dataForRef.wakeTime);
@@ -95,6 +95,8 @@ function DailyContent() {
         }
       }
       setDailyLogLoaded(true);
+    }, (error) => {
+      console.error("[Compass] Sync error:", error);
     });
 
     return () => unsub();
@@ -140,6 +142,10 @@ function DailyContent() {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [user, todayStr, schedule, wakeTime, bedTime, dinner, diary, progressPercent]);
+
+  const handleForceSync = () => {
+    window.location.reload();
+  };
 
   // ルーティンをFirebaseからリアルタイム取得
   useEffect(() => {
@@ -284,14 +290,49 @@ function DailyContent() {
       </div>
 
       <header>
-        <div className="flex items-end gap-3 mt-1 mb-4 flex-wrap">
-          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
-            {dict.daily.title}
-          </h1>
-          <span className="text-lg text-muted-foreground font-semibold pb-0.5">
-            {format(displayDate, "MM/dd (E)")}
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div className="flex items-end gap-3 flex-wrap">
+            <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
+              {dict.daily.title}
+            </h1>
+            <div className="flex items-center gap-2 pb-0.5">
+              <span className="text-lg text-muted-foreground font-semibold">
+                {format(displayDate, "MM/dd (E)")}
+              </span>
+              <button 
+                onClick={handleForceSync}
+                className="p-1 rounded-full text-muted-foreground hover:bg-muted hover:text-primary transition-all active:rotate-180 duration-500"
+                title="Force Sync"
+              >
+                <RotateCw size={16} />
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3 bg-muted/20 px-3 py-1.5 rounded-2xl border border-border/50">
+            <div className="flex flex-col items-end">
+              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">
+                {user?.displayName || user?.email?.split('@')[0]}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[8px] font-mono bg-white/50 px-1 rounded text-muted-foreground border border-border/30">
+                  ID: {user?.uid.slice(-4)}
+                </span>
+                <span className="text-[8px] font-mono bg-white/50 px-1 rounded text-muted-foreground border border-border/30">
+                  {todayStr}
+                </span>
+              </div>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20 text-primary overflow-hidden">
+              {user?.photoURL ? (
+                <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <CheckCircle2 size={16} />
+              )}
+            </div>
+          </div>
         </div>
+
         <Link href="/calendar" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-border rounded-full text-xs font-semibold text-muted-foreground hover:text-primary hover:border-primary/50 shadow-sm transition-all group">
           <CalendarDays size={14} className="text-primary/70 group-hover:text-primary transition-colors" /> {dict.daily.selectAnotherDay}
         </Link>
