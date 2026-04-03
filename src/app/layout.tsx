@@ -16,6 +16,10 @@ export const metadata: Metadata = {
   title: "Compass",
   description: "Personal Todo, Diary, and Goal Management Application",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
