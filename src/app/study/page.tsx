@@ -11,6 +11,7 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { 
   saveStudyMaterial, 
+  deleteStudyMaterial,
   saveStudyLog, 
   updateStudyLog,
   deleteStudyLog,
@@ -28,7 +29,6 @@ export const PALETTE_COLORS = [
 ];
 
 export default function StudyPage() {
-  const { dict } = useLanguage();
   const { user } = useAuth();
   
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
@@ -40,6 +40,8 @@ export default function StudyPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [newColor, setNewColor] = useState(PALETTE_COLORS[9]); // デフォルトはblue-500
+  const [editMaterialId, setEditMaterialId] = useState<string | null>(null); // 教材編集中ならIDが入る
+
 
   // 勉強時間追加・編集モーダルの状態
   const [timeModalMaterialId, setTimeModalMaterialId] = useState<string | null>(null);
@@ -109,7 +111,7 @@ export default function StudyPage() {
       const d = format(subDays(new Date(), i), "yyyy-MM-dd");
       const dayLogs = logs.filter(l => l.date === d);
       
-      const dataPoint: any = { 
+      const dataPoint: Record<string, string | number> = { 
         name: format(subDays(new Date(), i), "M/d"),
         date: d
       };
@@ -172,22 +174,40 @@ export default function StudyPage() {
     if (!user || !newTitle.trim() || !newCategory.trim()) return;
 
     try {
-      const newMatData = {
+      const matData = {
         title: newTitle.trim(),
         categoryId: newCategory.trim(),
         color: newColor, 
+        isDeleted: false // 新しく保存/更新するときは必ずfalse
       };
       
-      const newId = await saveStudyMaterial(user.uid, newMatData);
-      setMaterials(prev => [...prev, { id: newId, ...newMatData }]);
+      await saveStudyMaterial(user.uid, matData, editMaterialId || undefined);
       
       // リセットして閉じる
       setNewTitle("");
       setNewCategory("");
+      setEditMaterialId(null);
       setIsModalOpen(false);
     } catch (err) {
       console.error(err);
       alert("エラーが発生しました。");
+    }
+  };
+
+  // 教材の削除 (アーカイブ)
+  const handleDeleteMaterial = async () => {
+    if (!user || !editMaterialId) return;
+    if (!window.confirm("この教材を削除しますか？\n(過去の学習記録はグラフに残りますが、新しく記録することはできなくなります)")) return;
+
+    try {
+      await deleteStudyMaterial(user.uid, editMaterialId);
+      setIsModalOpen(false);
+      setEditMaterialId(null);
+      setNewTitle("");
+      setNewCategory("");
+    } catch (err) {
+      console.error("教材削除エラー:", err);
+      alert("削除に失敗しました。");
     }
   };
 
@@ -259,9 +279,10 @@ export default function StudyPage() {
                   <Tooltip 
                     cursor={{ fill: '#f3f4f6' }}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    formatter={(value: any, name: any) => {
-                      const h = Math.floor(value / 60);
-                      const m = value % 60;
+                    formatter={(value: number | string, name: string) => {
+                      const val = Number(value);
+                      const h = Math.floor(val / 60);
+                      const m = val % 60;
                       const timeStr = h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
                       return [timeStr, name];
                     }}
@@ -292,11 +313,16 @@ export default function StudyPage() {
             </button>
           </div>
           
-          {materials.length === 0 ? (
+          {materials.filter(m => !m.isDeleted).length === 0 ? (
             <div className="text-center p-8 border border-dashed rounded-xl border-border bg-muted/10">
               <p className="text-sm text-muted-foreground font-medium mb-3">教材が登録されていません</p>
               <button 
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => {
+                  setEditMaterialId(null);
+                  setNewTitle("");
+                  setNewCategory("");
+                  setIsModalOpen(true);
+                }}
                 className="text-sm font-semibold text-white bg-primary hover:bg-primary/90 px-4 py-2 rounded-full transition-colors inline-block"
               >
                 最初の教材を登録する
@@ -304,16 +330,31 @@ export default function StudyPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {materials.map(material => {
+              {materials.filter(m => !m.isDeleted).map(material => {
                 const minsToday = todayLogsByMaterial[material.id] || 0;
                 return (
-                  <div key={material.id} className="bg-white border border-border rounded-xl p-4 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
+                  <div key={material.id} className="bg-white border border-border rounded-xl p-4 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow group">
                     <div className="flex items-center gap-4">
                       <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: material.color }}></div>
                       <div className="flex flex-col">
-                        <span className="text-xs font-bold px-1.5 py-0.5 rounded uppercase tracking-wider w-max mb-1 text-white" style={{ backgroundColor: material.color }}>
-                          {material.categoryId}
-                        </span>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold px-1.5 py-0.5 rounded uppercase tracking-wider text-white" style={{ backgroundColor: material.color }}>
+                            {material.categoryId}
+                          </span>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditMaterialId(material.id);
+                              setNewTitle(material.title);
+                              setNewCategory(material.categoryId);
+                              setNewColor(material.color);
+                              setIsModalOpen(true);
+                            }}
+                            className="p-1 rounded-md text-muted-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                        </div>
                         <span className="font-semibold text-foreground">{material.title}</span>
                       </div>
                     </div>
@@ -413,14 +454,25 @@ export default function StudyPage() {
           >
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
-                <Bookmark className="text-primary" size={22}/> 教材の追加
+                <Bookmark className="text-primary" size={22}/> {editMaterialId ? "教材の編集" : "教材の追加"}
               </h3>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                {editMaterialId && (
+                  <button 
+                    onClick={handleDeleteMaterial}
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                    title="教材をアーカイブ"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                )}
+                <button 
+                  onClick={() => setIsModalOpen(false)}
+                  className="p-1.5 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-5">
@@ -477,7 +529,7 @@ export default function StudyPage() {
                 disabled={!newTitle.trim() || !newCategory.trim()}
                 className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/50"
               >
-                追加する
+                {editMaterialId ? "変更を保存する" : "追加する"}
               </button>
             </div>
           </div>

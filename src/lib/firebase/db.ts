@@ -8,6 +8,7 @@ export interface StudyMaterial {
   title: string;
   categoryId: string; // e.g., 'english', 'programming'
   color: string; // Hex or Tailwind class
+  isDeleted?: boolean; // 論理削除フラグ
 }
 
 export interface StudyLog {
@@ -67,7 +68,8 @@ export const saveStudyMaterial = async (userId: string, material: Omit<StudyMate
 
 export const deleteStudyMaterial = async (userId: string, materialId: string) => {
   if (!userId) throw new Error("No user ID");
-  await deleteDoc(doc(db, `users/${userId}/studyMaterials`, materialId));
+  const ref = doc(db, `users/${userId}/studyMaterials`, materialId);
+  await updateDoc(ref, { isDeleted: true });
 };
 
 // ====== Study Logs (学習記録) ======
