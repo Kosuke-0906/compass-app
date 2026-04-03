@@ -136,12 +136,14 @@ export default function MemosPage() {
 
   const handleToggleFavorite = async (memo: Memo) => {
     if (!user) return;
-    await saveMemo(user.uid, { ...memo, isFavorite: !memo.isFavorite }, memo.id);
+    const { id, ...rest } = memo;
+    await saveMemo(user.uid, { ...rest, isFavorite: !memo.isFavorite }, memo.id);
   };
 
   const handleTogglePin = async (memo: Memo) => {
     if (!user) return;
-    await saveMemo(user.uid, { ...memo, isPinned: !memo.isPinned }, memo.id);
+    const { id, ...rest } = memo;
+    await saveMemo(user.uid, { ...rest, isPinned: !memo.isPinned }, memo.id);
   };
 
   const handleDeleteMemo = async (memoId: string) => {
@@ -520,7 +522,7 @@ export default function MemosPage() {
                   </div>
                 )}
                 
-                <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <div className="absolute top-3 right-3 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10">
                    <button 
                     onClick={() => handleToggleFavorite(memo)}
                     className={`p-1.5 rounded-lg transition-all ${memo.isFavorite ? 'text-yellow-500 bg-yellow-50' : 'text-muted-foreground hover:text-yellow-500 bg-muted'}`}
