@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      margin: 0;
+      background: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .icon-container {
+      width: 1000px;
+      height: 1000px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .bg-circle {
+      width: 800px;
+      height: 800px;
+      background-color: #eff6ff;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .lucide-compass {
+      width: 500px;
+      height: 500px;
+      stroke: #60a5fa;
+      stroke-width: 1.5; /* Slightly thinner than 2 for that crisp look */
+      fill: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="icon-container" id="icon">
+    <div class="bg-circle">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" class="lucide-compass">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36z"></path>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
