@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Plus, Trash2, History, BookOpen, CheckCircle2, ChevronRight, Save, Clock } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, History, BookOpen, CheckCircle2, ChevronRight, Clock } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
 import { 
   Book, ReadingLog, 
-  getBooks, saveBook, deleteBook, 
-  saveReadingLog, getReadingLogsByBook 
+  saveBook, deleteBook, 
+  saveReadingLog
 } from "@/lib/firebase/db";
 
 export default function ReadingPage() {
@@ -27,17 +29,37 @@ export default function ReadingPage() {
   const [logHours, setLogHours] = useState(0);
   const [logMinutes, setLogMinutes] = useState(0);
   
+  const [localProgress, setLocalProgress] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
+  // 1. Real-time Books Sync
   useEffect(() => {
     if (!user) return;
-    const fetchBooks = async () => {
-      const data = await getBooks(user.uid);
+    const q = query(collection(db, `users/${user.uid}/books`));
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Book));
       setBooks(data);
       setLoading(false);
-    };
-    fetchBooks();
+    });
+    return () => unsub();
   }, [user]);
+
+  // 2. Real-time Reading Logs Sync for the selected book
+  useEffect(() => {
+    if (!user || !selectedBook) {
+      setReadingLogs([]);
+      return;
+    }
+    const q = query(
+      collection(db, `users/${user.uid}/readingLogs`),
+      where("bookId", "==", selectedBook.id)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+       const logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReadingLog));
+       setReadingLogs(logs);
+    });
+    return () => unsub();
+  }, [user, selectedBook?.id]);
 
   const handleAddBook = async () => {
     if (!user || !newBookTitle.trim()) return;
@@ -48,7 +70,7 @@ export default function ReadingPage() {
       startDate: format(new Date(), "yyyy-MM-dd"),
     };
     const id = await saveBook(user.uid, newBook);
-    setBooks([...books, { id, ...newBook }]);
+    // onSnapshot will update the list
     setNewBookTitle("");
     setShowAddBook(false);
   };
@@ -64,7 +86,6 @@ export default function ReadingPage() {
       updatedBook.endDate = undefined;
     }
     await saveBook(user.uid, updatedBook, book.id);
-    setBooks(books.map(b => b.id === book.id ? updatedBook : b));
   };
 
   const handleSaveLog = async () => {
@@ -78,27 +99,18 @@ export default function ReadingPage() {
       durationMins,
     };
     await saveReadingLog(user.uid, log);
-    
-    // Refresh history if the same book is selected
-    const logs = await getReadingLogsByBook(user.uid, selectedBook.id);
-    setReadingLogs(logs);
-    
     setShowLogInput(false);
     setLogHours(0);
     setLogMinutes(0);
   };
 
-  const handleBookClick = async (book: Book) => {
-    if (!user) return;
+  const handleBookClick = (book: Book) => {
     setSelectedBook(book);
-    const logs = await getReadingLogsByBook(user.uid, book.id);
-    setReadingLogs(logs);
   };
 
   const handleDeleteBook = async (id: string) => {
     if (!user || !confirm("この本を削除してもよろしいですか？記録も失われます。")) return;
     await deleteBook(user.uid, id);
-    setBooks(books.filter(b => b.id !== id));
     if (selectedBook?.id === id) setSelectedBook(null);
   };
 
@@ -155,12 +167,20 @@ export default function ReadingPage() {
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs font-bold text-muted-foreground">
                       <span>{dict.daily.progress}</span>
-                      <span>{book.progress}%</span>
+                      <span>{localProgress[book.id] ?? book.progress}%</span>
                     </div>
                     <input 
-                      type="range" min="0" max="100" value={book.progress} 
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => handleUpdateProgress(book, Number(e.target.value))}
+                      type="range" min="0" max="100" 
+                      value={localProgress[book.id] ?? book.progress} 
+                      onChange={(e) => setLocalProgress(prev => ({ ...prev, [book.id]: Number(e.target.value) }))}
+                      onPointerUp={() => {
+                        handleUpdateProgress(book, localProgress[book.id] ?? book.progress);
+                        setLocalProgress(prev => {
+                          const next = { ...prev };
+                          delete next[book.id];
+                          return next;
+                        });
+                      }}
                       className="w-full h-2 bg-muted rounded-full appearance-none outline-none cursor-pointer accent-primary"
                     />
                   </div>

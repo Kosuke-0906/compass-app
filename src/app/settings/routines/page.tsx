@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, Plus, Trash2, GripVertical, Save } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
-import { MasterRoutine, getMasterRoutines, saveMasterRoutine, deleteMasterRoutine } from "@/lib/firebase/db";
+import { collection, query, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
+import { MasterRoutine, saveMasterRoutine, deleteMasterRoutine } from "@/lib/firebase/db";
 
 export default function RoutineSettingsPage() {
   const router = useRouter();
@@ -17,12 +19,15 @@ export default function RoutineSettingsPage() {
 
   useEffect(() => {
     if (!user) return;
-    const fetchRoutines = async () => {
-      const data = await getMasterRoutines(user.uid);
-      setRoutines(data);
+    
+    const q = query(collection(db, `users/${user.uid}/masterRoutines`));
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as MasterRoutine));
+      setRoutines(data.sort((a, b) => a.order - b.order));
       setLoading(false);
-    };
-    fetchRoutines();
+    });
+    
+    return () => unsub();
   }, [user]);
 
   const handleAddRoutine = async () => {
@@ -53,7 +58,7 @@ export default function RoutineSettingsPage() {
         >
           <ChevronLeft size={24} />
         </button>
-        <h1 className="text-2xl font-bold">{dict.daily.routine}の既定設定</h1>
+        <h1 className="text-2xl font-bold">{dict.daily.manageRoutines}</h1>
       </header>
 
       <div className="bg-white rounded-2xl border border-border shadow-sm p-6 space-y-6">
