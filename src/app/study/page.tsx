@@ -81,15 +81,23 @@ export default function StudyPage() {
   }, [user, sevenDaysAgoStr, todayStr]);
 
   // 重複のない「カテゴリーと色」のリストを動的に生成
+  // この1週間で記録があるカテゴリーのみを表示するように修正
   const uniqueCategories = useMemo(() => {
     const cats: Record<string, string> = {};
+    
+    // この期間のログに存在するマテリアルIDを抽出
+    const materialIdsWithLogs = new Set(logs.map(l => l.materialId));
+    
     materials.forEach(m => {
-      if (!cats[m.categoryId]) {
-        cats[m.categoryId] = m.color;
+      // 記録があり、かつ削除されていないもののみ凡例に出す
+      if (materialIdsWithLogs.has(m.id)) {
+        if (!cats[m.categoryId]) {
+          cats[m.categoryId] = m.color;
+        }
       }
     });
     return Object.keys(cats).map(name => ({ name, color: cats[name] }));
-  }, [materials]);
+  }, [materials, logs]);
 
   // 今日のログをマテリアルごとに集計
   const todayLogsByMaterial = useMemo(() => {
