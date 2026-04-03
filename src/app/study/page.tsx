@@ -350,9 +350,9 @@ export default function StudyPage() {
                               setNewColor(material.color);
                               setIsModalOpen(true);
                             }}
-                            className="p-1 rounded-md text-muted-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="p-2 rounded-md text-muted-foreground hover:bg-muted bg-muted/30 transition-colors"
                           >
-                            <Edit2 size={13} />
+                            <Edit2 size={14} />
                           </button>
                         </div>
                         <span className="font-semibold text-foreground">{material.title}</span>
