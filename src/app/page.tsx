@@ -3,12 +3,16 @@
 import { useState, Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, Circle, Smartphone, BookOpen, Moon, Sun, Edit3, Plus, RotateCw, ListTodo, CalendarClock, CalendarDays, Utensils, ChevronLeft, ChevronRight, ChevronDown, Flag } from "lucide-react";
+import { CheckCircle2, Circle, Smartphone, BookOpen, Moon, Sun, Edit3, Plus, RotateCw, ListTodo, CalendarClock, CalendarDays, Utensils, ChevronLeft, ChevronRight, ChevronDown, Flag, Trash2 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
+import {
+  saveRoutine, deleteRoutine, toggleRoutineCompletion, RoutineItem,
+  saveTodo, deleteTodo, toggleTodoCompletion, TodoItem
+} from "@/lib/firebase/db";
 
 function DailyContent() {
   const searchParams = useSearchParams();
@@ -16,23 +20,82 @@ function DailyContent() {
   const displayDate = dateParam ? parseISO(dateParam) : new Date();
   const { dict } = useLanguage();
 
-  const [routines, setRoutines] = useState<any[]>([]);
-  const [todos, setTodos] = useState<any[]>([]);
+  const [routines, setRoutines] = useState<RoutineItem[]>([]);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [newRoutineText, setNewRoutineText] = useState("");
+  const [newTodoText, setNewTodoText] = useState("");
+  const [showRoutineInput, setShowRoutineInput] = useState(false);
+  const [showTodoInput, setShowTodoInput] = useState(false);
 
   const [progressPercent, setProgressPercent] = useState(50);
   const [wakeTime, setWakeTime] = useState("07:00");
   const [bedTime, setBedTime] = useState("23:30");
-  const [isSleepExpanded, setIsSleepExpanded] = useState(false); // 睡眠時間の開閉状態
+  const [isSleepExpanded, setIsSleepExpanded] = useState(false);
   
-  const [targetStudyMins, setTargetStudyMins] = useState(120); // デフォルト2時間
+  const [targetStudyMins, setTargetStudyMins] = useState(120);
   const [todayStudyMins, setTodayStudyMins] = useState<number | null>(null);
 
-  const toggleRoutine = (id: number) => {
-    setRoutines(routines.map((r) => (r.id === id ? { ...r, completed: !r.completed } : r)));
+  const { user } = useAuth();
+  const todayStr = format(displayDate, "yyyy-MM-dd");
+
+  // ルーティンをFirebaseからリアルタイム取得
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, `users/${user.uid}/routines`),
+      where("date", "==", todayStr)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setRoutines(snap.docs.map(d => ({ id: d.id, ...d.data() } as RoutineItem)));
+    });
+    return () => unsub();
+  }, [user, todayStr]);
+
+  // ToDoをFirebaseからリアルタイム取得
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, `users/${user.uid}/todos`),
+      where("date", "==", todayStr)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setTodos(snap.docs.map(d => ({ id: d.id, ...d.data() } as TodoItem)));
+    });
+    return () => unsub();
+  }, [user, todayStr]);
+
+  const handleAddRoutine = async () => {
+    if (!user || !newRoutineText.trim()) return;
+    await saveRoutine(user.uid, { text: newRoutineText.trim(), date: todayStr, completed: false });
+    setNewRoutineText("");
+    setShowRoutineInput(false);
   };
 
-  const toggleTodo = (id: number) => {
-    setTodos(todos.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
+  const handleAddTodo = async () => {
+    if (!user || !newTodoText.trim()) return;
+    await saveTodo(user.uid, { text: newTodoText.trim(), date: todayStr, completed: false });
+    setNewTodoText("");
+    setShowTodoInput(false);
+  };
+
+  const handleToggleRoutine = async (r: RoutineItem) => {
+    if (!user) return;
+    await toggleRoutineCompletion(user.uid, r.id, !r.completed);
+  };
+
+  const handleToggleTodo = async (t: TodoItem) => {
+    if (!user) return;
+    await toggleTodoCompletion(user.uid, t.id, !t.completed);
+  };
+
+  const handleDeleteRoutine = async (id: string) => {
+    if (!user) return;
+    await deleteRoutine(user.uid, id);
+  };
+
+  const handleDeleteTodo = async (id: string) => {
+    if (!user) return;
+    await deleteTodo(user.uid, id);
   };
 
   // 1日の充実度グラデーション
@@ -44,29 +107,22 @@ function DailyContent() {
     const [startH, startM] = start.split(":").map(Number);
     const [endH, endM] = end.split(":").map(Number);
     let durationMins = (endH * 60 + endM) - (startH * 60 + startM);
-    if (durationMins < 0) durationMins += 24 * 60; // 日またぎの計算
+    if (durationMins < 0) durationMins += 24 * 60;
     const h = Math.floor(durationMins / 60);
     const m = durationMins % 60;
 
-    let sleepHue = 120; // 基準は緑
+    let sleepHue = 120;
     if (durationMins < 450) {
       sleepHue = Math.max(0, 120 - ((450 - durationMins) * 1.5));
     } else {
       sleepHue = Math.min(260, 120 + ((durationMins - 450) * 1.2));
     }
     
-    // UIを少しポップにするためにLightnessを上げる
-    // モダンな hsl(h s l / alpha) 形式で返す
     const baseColor = `hsl(${sleepHue} 85% 40%)`;
     const bgColor = `hsl(${sleepHue} 85% 40% / 0.1)`;
     const borderColor = `hsl(${sleepHue} 85% 40% / 0.3)`;
 
-    return {
-      text: `${h}h ${m}m`, 
-      color: baseColor,
-      bg: bgColor,
-      border: borderColor
-    };
+    return { text: `${h}h ${m}m`, color: baseColor, bg: bgColor, border: borderColor };
   };
 
   const sleepInfo = calculateSleepDuration(bedTime, wakeTime);
@@ -88,13 +144,10 @@ function DailyContent() {
       </div>
     </div>
   );
-
-  const { user } = useAuth();
   
-  // 爆速化: 今日の学習記録をFirebaseからリアルタイム（キャッシュ優先）で取得
+  // 今日の学習記録をFirebaseからリアルタイム取得
   useEffect(() => {
     if (!user) return;
-    const todayStr = format(displayDate, "yyyy-MM-dd");
     
     const qLogs = query(
       collection(db, `users/${user.uid}/studyLogs`),
@@ -111,11 +164,10 @@ function DailyContent() {
     });
 
     return () => unsubscribe();
-  }, [user, displayDate]);
+  }, [user, todayStr]);
 
   // 勉強時間の達成率計算
   const achievementRate = targetStudyMins > 0 ? Math.floor(((todayStudyMins || 0) / targetStudyMins) * 100) : 0;
-  // プログレスバーの横幅は最大100%
   const clampRate = Math.min(achievementRate, 100);
 
   return (
@@ -158,33 +210,42 @@ function DailyContent() {
           {routines.map((routine) => (
              <div 
                key={routine.id} 
-               onClick={() => toggleRoutine(routine.id)}
-               className={`flex items-start gap-3 p-4 rounded-xl cursor-pointer transition-all border ${
+               className={`flex items-center gap-3 p-4 rounded-xl transition-all border ${
                  routine.completed 
                    ? "bg-muted/30 border-transparent text-muted-foreground/60" 
-                   : "bg-white border-border shadow-sm hover:shadow-md hover:border-primary/30"
+                   : "bg-white border-border shadow-sm"
                }`}
              >
-               {routine.completed ? <CheckCircle2 className="text-primary shrink-0 mt-0.5" size={22} /> : <Circle className="text-muted-foreground shrink-0 mt-0.5" size={22} />}
-               <div className="flex-1 flex flex-col gap-1.5">
-                 <span className={`text-base leading-tight ${routine.completed ? "line-through" : "font-medium text-foreground"}`}>
-                   {routine.text}
-                 </span>
-                 {routine.tags.length > 0 && (
-                   <div className="flex gap-1 flex-wrap">
-                     {routine.tags.map(t => (
-                        <span key={t.name} className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold tracking-wide uppercase ${routine.completed ? 'opacity-50' : t.color}`}>
-                          {t.name}
-                        </span>
-                     ))}
-                   </div>
-                 )}
-               </div>
+               <button onClick={() => handleToggleRoutine(routine)} className="shrink-0">
+                 {routine.completed ? <CheckCircle2 className="text-primary" size={22} /> : <Circle className="text-muted-foreground" size={22} />}
+               </button>
+               <span className={`flex-1 text-base leading-tight ${routine.completed ? "line-through" : "font-medium text-foreground"}`}>
+                 {routine.text}
+               </span>
+               <button onClick={() => handleDeleteRoutine(routine.id)} className="text-muted-foreground hover:text-red-500 p-1 transition-colors">
+                 <Trash2 size={16} />
+               </button>
              </div>
           ))}
-          <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors py-2 px-1">
-            <Plus size={16} /> {dict.daily.addRoutine}
-          </button>
+          {showRoutineInput ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newRoutineText}
+                onChange={e => setNewRoutineText(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleAddRoutine()}
+                placeholder="ルーティンを入力..."
+                className="flex-1 border border-border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                autoFocus
+              />
+              <button onClick={handleAddRoutine} className="bg-primary text-white px-4 rounded-xl font-bold text-sm">追加</button>
+              <button onClick={() => { setShowRoutineInput(false); setNewRoutineText(""); }} className="text-muted-foreground px-2">✕</button>
+            </div>
+          ) : (
+            <button onClick={() => setShowRoutineInput(true)} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors py-2 px-1">
+              <Plus size={16} /> {dict.daily.addRoutine}
+            </button>
+          )}
         </div>
       </section>
 
@@ -200,33 +261,42 @@ function DailyContent() {
           {todos.map((todo) => (
              <div 
                key={todo.id} 
-               onClick={() => toggleTodo(todo.id)}
-               className={`flex items-start gap-3 p-4 rounded-xl cursor-pointer transition-all border ${
+               className={`flex items-center gap-3 p-4 rounded-xl transition-all border ${
                  todo.completed 
                    ? "bg-muted/30 border-transparent text-muted-foreground/60" 
-                   : "bg-white border-border shadow-sm hover:shadow-md hover:border-primary/30"
+                   : "bg-white border-border shadow-sm"
                }`}
              >
-               {todo.completed ? <CheckCircle2 className="text-primary shrink-0 mt-0.5" size={22} /> : <Circle className="text-muted-foreground shrink-0 mt-0.5" size={22} />}
-               <div className="flex-1 flex flex-col gap-1.5">
-                 <span className={`text-base leading-tight ${todo.completed ? "line-through" : "font-medium text-foreground"}`}>
-                   {todo.text}
-                 </span>
-                 {todo.tags.length > 0 && (
-                   <div className="flex gap-1 flex-wrap">
-                     {todo.tags.map(t => (
-                        <span key={t.name} className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold tracking-wide uppercase ${todo.completed ? 'opacity-50' : t.color}`}>
-                          {t.name}
-                        </span>
-                     ))}
-                   </div>
-                 )}
-               </div>
+               <button onClick={() => handleToggleTodo(todo)} className="shrink-0">
+                 {todo.completed ? <CheckCircle2 className="text-primary" size={22} /> : <Circle className="text-muted-foreground" size={22} />}
+               </button>
+               <span className={`flex-1 text-base leading-tight ${todo.completed ? "line-through" : "font-medium text-foreground"}`}>
+                 {todo.text}
+               </span>
+               <button onClick={() => handleDeleteTodo(todo.id)} className="text-muted-foreground hover:text-red-500 p-1 transition-colors">
+                 <Trash2 size={16} />
+               </button>
              </div>
           ))}
-          <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors py-2 px-1">
-            <Plus size={16} /> {dict.daily.addTodo}
-          </button>
+          {showTodoInput ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newTodoText}
+                onChange={e => setNewTodoText(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleAddTodo()}
+                placeholder="やることを入力..."
+                className="flex-1 border border-border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                autoFocus
+              />
+              <button onClick={handleAddTodo} className="bg-primary text-white px-4 rounded-xl font-bold text-sm">追加</button>
+              <button onClick={() => { setShowTodoInput(false); setNewTodoText(""); }} className="text-muted-foreground px-2">✕</button>
+            </div>
+          ) : (
+            <button onClick={() => setShowTodoInput(true)} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors py-2 px-1">
+              <Plus size={16} /> {dict.daily.addTodo}
+            </button>
+          )}
         </div>
       </section>
 

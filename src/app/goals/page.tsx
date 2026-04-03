@@ -155,7 +155,7 @@ export default function GoalsPage() {
             )}
           </div>
         </div>
-        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-3 right-3 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <button onClick={() => openEditModal(goal)} className="text-muted-foreground hover:text-primary p-1.5 rounded-full hover:bg-white transition-colors"><Edit2 size={14} /></button>
           <button onClick={() => handleDelete(goal.id)} className="text-muted-foreground hover:text-red-500 p-1.5 rounded-full hover:bg-white transition-colors"><Trash2 size={14} /></button>
         </div>

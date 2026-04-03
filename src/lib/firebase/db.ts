@@ -194,3 +194,66 @@ export const toggleGoalCompletion = async (userId: string, goalId: string, isCom
   const ref = doc(db, `users/${userId}/goals`, goalId);
   await updateDoc(ref, { isCompleted });
 };
+
+// ====== Routines (ルーティン) ======
+
+export interface RoutineItem {
+  id: string;
+  text: string;
+  completed: boolean;
+  date: string; // YYYY-MM-DD
+  createdAt: Timestamp | FieldValue | null;
+}
+
+export const saveRoutine = async (userId: string, routine: { text: string; date: string; completed: boolean }, routineId?: string) => {
+  if (!userId) throw new Error("No user ID");
+  const ref = routineId
+    ? doc(db, `users/${userId}/routines`, routineId)
+    : doc(collection(db, `users/${userId}/routines`));
+  const data: any = { ...routine };
+  if (!routineId) data.createdAt = serverTimestamp();
+  await setDoc(ref, data, { merge: true });
+  return ref.id;
+};
+
+export const deleteRoutine = async (userId: string, routineId: string) => {
+  if (!userId) throw new Error("No user ID");
+  await deleteDoc(doc(db, `users/${userId}/routines`, routineId));
+};
+
+export const toggleRoutineCompletion = async (userId: string, routineId: string, completed: boolean) => {
+  if (!userId) throw new Error("No user ID");
+  await updateDoc(doc(db, `users/${userId}/routines`, routineId), { completed });
+};
+
+// ====== Todos (ToDoリスト) ======
+
+export interface TodoItem {
+  id: string;
+  text: string;
+  completed: boolean;
+  date: string; // YYYY-MM-DD
+  createdAt: Timestamp | FieldValue | null;
+}
+
+export const saveTodo = async (userId: string, todo: { text: string; date: string; completed: boolean }, todoId?: string) => {
+  if (!userId) throw new Error("No user ID");
+  const ref = todoId
+    ? doc(db, `users/${userId}/todos`, todoId)
+    : doc(collection(db, `users/${userId}/todos`));
+  const data: any = { ...todo };
+  if (!todoId) data.createdAt = serverTimestamp();
+  await setDoc(ref, data, { merge: true });
+  return ref.id;
+};
+
+export const deleteTodo = async (userId: string, todoId: string) => {
+  if (!userId) throw new Error("No user ID");
+  await deleteDoc(doc(db, `users/${userId}/todos`, todoId));
+};
+
+export const toggleTodoCompletion = async (userId: string, todoId: string, completed: boolean) => {
+  if (!userId) throw new Error("No user ID");
+  await updateDoc(doc(db, `users/${userId}/todos`, todoId), { completed });
+};
+

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut as firebaseSignOut } from "firebase/auth";
+import { User, onAuthStateChanged, signInWithRedirect, GoogleAuthProvider, signOut as firebaseSignOut, getRedirectResult } from "firebase/auth";
 import { auth } from "@/lib/firebase/config";
 import { Compass } from "lucide-react";
 
@@ -24,6 +24,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // リダイレクト結果をキャッチ
+    getRedirectResult(auth).catch((err) => {
+      console.error("Redirect result error:", err);
+    });
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setLoading(false);
@@ -35,7 +40,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error("Error signing in with Google", error);
     }
@@ -65,8 +70,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               </div>
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold text-foreground tracking-tight mb-2">Welcome to Compass</h1>
-              <p className="text-sm text-muted-foreground">Please sign in to access your goals, schedules, and daily tracking.</p>
+              <h1 className="text-2xl font-extrabold text-foreground tracking-tight mb-2">Compassへようこそ</h1>
+              <p className="text-sm text-muted-foreground">ログインして目標・学習記録を管理しましょう。</p>
             </div>
             <button 
               onClick={signInWithGoogle}
@@ -78,7 +83,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
               </svg>
-              Sign in with Google
+              Googleでログイン
             </button>
           </div>
         </div>
