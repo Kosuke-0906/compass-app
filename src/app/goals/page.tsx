@@ -67,14 +67,17 @@ export default function GoalsPage() {
     if (!user || !newTitle.trim()) return;
     try {
       const tagsArray = newTags.split(/[,，、\s]+/).filter(t => t.trim() !== "");
-      const gData = {
+      
+      const gData: any = {
         title: newTitle.trim(),
         type: newType,
         date: format(new Date(), "yyyy-MM-dd"),
-        deadline: newDeadline || undefined,
-        tags: tagsArray.length > 0 ? tagsArray : undefined,
         isCompleted: false
       };
+      
+      if (newDeadline) gData.deadline = newDeadline;
+      if (tagsArray.length > 0) gData.tags = tagsArray;
+
       await saveGoal(user.uid, gData, editGoalId || undefined);
       closeModal();
     } catch (err) {
