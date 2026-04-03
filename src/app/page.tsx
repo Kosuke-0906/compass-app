@@ -1,65 +1,439 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+import { useState, Suspense, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { CheckCircle2, Circle, Smartphone, BookOpen, Moon, Sun, Edit3, Plus, RotateCw, ListTodo, CalendarClock, CalendarDays, Utensils, ChevronLeft, ChevronRight, ChevronDown, Flag } from "lucide-react";
+import { format, parseISO } from "date-fns";
+import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/context/AuthContext";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
+
+function DailyContent() {
+  const searchParams = useSearchParams();
+  const dateParam = searchParams.get("date");
+  const displayDate = dateParam ? parseISO(dateParam) : new Date();
+  const { dict } = useLanguage();
+
+  const [routines, setRoutines] = useState<any[]>([]);
+  const [todos, setTodos] = useState<any[]>([]);
+
+  const [progressPercent, setProgressPercent] = useState(50);
+  const [wakeTime, setWakeTime] = useState("07:00");
+  const [bedTime, setBedTime] = useState("23:30");
+  const [isSleepExpanded, setIsSleepExpanded] = useState(false); // 睡眠時間の開閉状態
+  
+  const [targetStudyMins, setTargetStudyMins] = useState(120); // デフォルト2時間
+  const [todayStudyMins, setTodayStudyMins] = useState<number | null>(null);
+
+  const toggleRoutine = (id: number) => {
+    setRoutines(routines.map((r) => (r.id === id ? { ...r, completed: !r.completed } : r)));
+  };
+
+  const toggleTodo = (id: number) => {
+    setTodos(todos.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
+  };
+
+  // 1日の充実度グラデーション
+  const hue = 220 - (progressPercent * 2.2); 
+  const progressColor = `hsl(${hue}, 80%, 65%)`;
+
+  const calculateSleepDuration = (start: string, end: string) => {
+    if (!start || !end) return { text: "", color: "var(--foreground)" };
+    const [startH, startM] = start.split(":").map(Number);
+    const [endH, endM] = end.split(":").map(Number);
+    let durationMins = (endH * 60 + endM) - (startH * 60 + startM);
+    if (durationMins < 0) durationMins += 24 * 60; // 日またぎの計算
+    const h = Math.floor(durationMins / 60);
+    const m = durationMins % 60;
+
+    let sleepHue = 120; // 基準は緑
+    if (durationMins < 450) {
+      sleepHue = Math.max(0, 120 - ((450 - durationMins) * 1.5));
+    } else {
+      sleepHue = Math.min(260, 120 + ((durationMins - 450) * 1.2));
+    }
+    
+    // UIを少しポップにするためにLightnessを上げる
+    const color = `hsl(${sleepHue}, 85%, 45%)`;
+
+    return {
+      text: `${h}h ${m}m`, // 文字を少し短縮
+      color: color
+    };
+  };
+
+  const sleepInfo = calculateSleepDuration(bedTime, wakeTime);
+
+  // Time Selectors for Phone Time
+  const renderTimeSelectors = () => (
+    <div className="flex gap-2">
+      <div className="flex bg-background border border-border rounded-lg overflow-hidden focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+        <select className="bg-transparent px-2 py-2.5 text-sm font-medium text-foreground outline-none appearance-none cursor-pointer">
+          {[...Array(25)].map((_, i) => <option key={i} value={i}>{i}</option>)}
+        </select>
+        <span className="flex items-center text-xs text-muted-foreground pr-2 font-medium pointer-events-none select-none">{dict.daily.hours}</span>
+      </div>
+      <div className="flex bg-background border border-border rounded-lg overflow-hidden focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+        <select className="bg-transparent px-2 py-2.5 text-sm font-medium text-foreground outline-none appearance-none cursor-pointer">
+          {[0, 10, 20, 30, 40, 50].map((m) => <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>)}
+        </select>
+        <span className="flex items-center text-xs text-muted-foreground pr-2 font-medium pointer-events-none select-none">{dict.daily.minutes}</span>
+      </div>
     </div>
   );
+
+  const { user } = useAuth();
+  
+  // 爆速化: 今日の学習記録をFirebaseからリアルタイム（キャッシュ優先）で取得
+  useEffect(() => {
+    if (!user) return;
+    const todayStr = format(displayDate, "yyyy-MM-dd");
+    
+    const qLogs = query(
+      collection(db, `users/${user.uid}/studyLogs`),
+      where("date", "==", todayStr)
+    );
+    
+    const unsubscribe = onSnapshot(qLogs, (snapshot) => {
+      let total = 0;
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        total += data.durationMins || 0;
+      });
+      setTodayStudyMins(total);
+    });
+
+    return () => unsubscribe();
+  }, [user, displayDate]);
+
+  // 勉強時間の達成率計算
+  const achievementRate = targetStudyMins > 0 ? Math.floor(((todayStudyMins || 0) / targetStudyMins) * 100) : 0;
+  // プログレスバーの横幅は最大100%
+  const clampRate = Math.min(achievementRate, 100);
+
+  return (
+    <div className="p-6 max-w-2xl mx-auto space-y-10 animate-in fade-in zoom-in-95 duration-500 pb-24">
+      <header>
+        <div className="flex items-end gap-3 mt-1 mb-4 flex-wrap">
+          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
+            {dict.daily.title}
+          </h1>
+          <span className="text-lg text-muted-foreground font-semibold pb-0.5">
+            {format(displayDate, "MM/dd (E)")}
+          </span>
+        </div>
+        <Link href="/calendar" className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-border rounded-full text-xs font-semibold text-muted-foreground hover:text-primary hover:border-primary/50 shadow-sm transition-all group">
+          <CalendarDays size={14} className="text-primary/70 group-hover:text-primary transition-colors" /> {dict.daily.selectAnotherDay}
+        </Link>
+      </header>
+
+      {/* Today's Schedule */}
+      <section>
+        <h2 className="font-semibold text-xl mb-3 flex items-center gap-2">
+          <CalendarClock className="text-primary" size={22}/> 
+          {dict.daily.todaySchedule}
+        </h2>
+        <textarea 
+          placeholder={dict.daily.todaySchedulePlaceholder}
+          className="w-full h-24 bg-white border border-border rounded-xl p-4 resize-none shadow-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
+        ></textarea>
+      </section>
+
+      {/* Routines */}
+      <section>
+        <div className="mb-3">
+          <h2 className="font-semibold text-xl flex items-center gap-2">
+            <RotateCw className="text-primary" size={22}/> 
+            {dict.daily.routine}
+          </h2>
+        </div>
+        <div className="space-y-3">
+          {routines.map((routine) => (
+             <div 
+               key={routine.id} 
+               onClick={() => toggleRoutine(routine.id)}
+               className={`flex items-start gap-3 p-4 rounded-xl cursor-pointer transition-all border ${
+                 routine.completed 
+                   ? "bg-muted/30 border-transparent text-muted-foreground/60" 
+                   : "bg-white border-border shadow-sm hover:shadow-md hover:border-primary/30"
+               }`}
+             >
+               {routine.completed ? <CheckCircle2 className="text-primary shrink-0 mt-0.5" size={22} /> : <Circle className="text-muted-foreground shrink-0 mt-0.5" size={22} />}
+               <div className="flex-1 flex flex-col gap-1.5">
+                 <span className={`text-base leading-tight ${routine.completed ? "line-through" : "font-medium text-foreground"}`}>
+                   {routine.text}
+                 </span>
+                 {routine.tags.length > 0 && (
+                   <div className="flex gap-1 flex-wrap">
+                     {routine.tags.map(t => (
+                        <span key={t.name} className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold tracking-wide uppercase ${routine.completed ? 'opacity-50' : t.color}`}>
+                          {t.name}
+                        </span>
+                     ))}
+                   </div>
+                 )}
+               </div>
+             </div>
+          ))}
+          <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors py-2 px-1">
+            <Plus size={16} /> {dict.daily.addRoutine}
+          </button>
+        </div>
+      </section>
+
+      {/* Todos */}
+      <section>
+        <div className="mb-3">
+          <h2 className="font-semibold text-xl flex items-center gap-2">
+            <ListTodo className="text-primary" size={22}/> 
+            {dict.daily.todo}
+          </h2>
+        </div>
+        <div className="space-y-3">
+          {todos.map((todo) => (
+             <div 
+               key={todo.id} 
+               onClick={() => toggleTodo(todo.id)}
+               className={`flex items-start gap-3 p-4 rounded-xl cursor-pointer transition-all border ${
+                 todo.completed 
+                   ? "bg-muted/30 border-transparent text-muted-foreground/60" 
+                   : "bg-white border-border shadow-sm hover:shadow-md hover:border-primary/30"
+               }`}
+             >
+               {todo.completed ? <CheckCircle2 className="text-primary shrink-0 mt-0.5" size={22} /> : <Circle className="text-muted-foreground shrink-0 mt-0.5" size={22} />}
+               <div className="flex-1 flex flex-col gap-1.5">
+                 <span className={`text-base leading-tight ${todo.completed ? "line-through" : "font-medium text-foreground"}`}>
+                   {todo.text}
+                 </span>
+                 {todo.tags.length > 0 && (
+                   <div className="flex gap-1 flex-wrap">
+                     {todo.tags.map(t => (
+                        <span key={t.name} className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold tracking-wide uppercase ${todo.completed ? 'opacity-50' : t.color}`}>
+                          {t.name}
+                        </span>
+                     ))}
+                   </div>
+                 )}
+               </div>
+             </div>
+          ))}
+          <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors py-2 px-1">
+            <Plus size={16} /> {dict.daily.addTodo}
+          </button>
+        </div>
+      </section>
+
+      {/* Study Time 独立セクション (睡眠時間と入れ替え＆高度化) */}
+      <section>
+        <h2 className="font-semibold text-xl mb-3 flex items-center gap-2">
+          <BookOpen className="text-primary" size={22}/> 
+          勉強時間
+        </h2>
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-border flex flex-col gap-5">
+          {/* 目標入力 */}
+          <div className="flex items-center justify-between border-b border-border pb-4">
+            <label className="text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
+              <Flag size={16} className="text-amber-500" />
+              朝の目標
+            </label>
+            <div className="flex gap-2">
+              <div className="flex bg-muted/30 border border-border rounded-lg overflow-hidden focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                <select 
+                  value={Math.floor(targetStudyMins / 60)} 
+                  onChange={(e) => setTargetStudyMins(Number(e.target.value) * 60 + (targetStudyMins % 60))}
+                  className="bg-transparent px-2 py-2 text-sm font-bold text-foreground outline-none appearance-none cursor-pointer"
+                >
+                  {[...Array(25)].map((_, i) => <option key={i} value={i}>{i}</option>)}
+                </select>
+                <span className="flex items-center text-[10px] text-muted-foreground pr-2 font-bold pointer-events-none select-none">h</span>
+              </div>
+              <div className="flex bg-muted/30 border border-border rounded-lg overflow-hidden focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                <select 
+                   value={targetStudyMins % 60} 
+                   onChange={(e) => setTargetStudyMins(Math.floor(targetStudyMins / 60) * 60 + Number(e.target.value))}
+                   className="bg-transparent px-2 py-2 text-sm font-bold text-foreground outline-none appearance-none cursor-pointer"
+                >
+                  {[0, 10, 20, 30, 40, 50].map((m) => <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>)}
+                </select>
+                <span className="flex items-center text-[10px] text-muted-foreground pr-2 font-bold pointer-events-none select-none">m</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 実績と達成率 */}
+          <div className="flex items-end justify-between px-1">
+            <Link href="/study" className="flex flex-col group cursor-pointer">
+              <span className="text-[11px] font-bold text-primary/80 mb-1 flex items-center gap-1 uppercase tracking-wider">
+                現在実績 (タップで個別入力) <ChevronRight size={12}/>
+              </span>
+              <div className="text-4xl font-extrabold text-foreground group-hover:text-primary transition-colors flex items-baseline gap-1">
+                {todayStudyMins === null ? (
+                  <span className="text-xl animate-pulse text-muted-foreground">計算中...</span>
+                ) : (
+                  <>
+                    {Math.floor(todayStudyMins / 60)}<span className="text-lg font-bold">h</span> {todayStudyMins % 60}<span className="text-lg font-bold">m</span>
+                  </>
+                )}
+              </div>
+            </Link>
+            
+            <div className="text-right flex flex-col items-end">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">達成率</span>
+              <span 
+                className="text-3xl font-black italic tracking-tighter"
+                style={{ color: achievementRate >= 100 ? '#8b5cf6' : 'var(--primary)' }}
+              >
+                {achievementRate}%
+              </span>
+            </div>
+          </div>
+
+          {/* プログレスプロット */}
+          <div className="space-y-2">
+            <div className="h-3 w-full bg-muted/60 rounded-full overflow-hidden relative shadow-inner">
+              <div 
+                className="absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ease-out"
+                style={{ 
+                  width: `${clampRate}%`, 
+                  backgroundImage: achievementRate >= 100 
+                    ? 'linear-gradient(to right, #6366f1, #a855f7, #ec4899)' // 100%超えは鮮やかなグラデ
+                    : 'linear-gradient(to right, #93c5fd, #3b82f6)', // 青色のグラデーション
+                }}
+              />
+            </div>
+            {achievementRate >= 100 && (
+              <p className="text-xs text-right font-bold text-purple-500 animate-in fade-in slide-in-from-bottom-1">
+                🎉 目標達成おめでとうございます！
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Evening Reflection & Diary */}
+      <section>
+        <h2 className="font-semibold text-xl mb-3 flex items-center gap-2">
+          <Edit3 className="text-primary" size={22}/> 
+          {dict.daily.reflection}
+        </h2>
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-border space-y-5">
+          <div className="flex flex-col sm:flex-row gap-5">
+            <div className="space-y-2 flex-1">
+              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Smartphone size={14}/> {dict.daily.phoneTime}</label>
+              {renderTimeSelectors()}
+            </div>
+            
+            <div className="space-y-2 flex-1 pb-0">
+              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                <Utensils size={14}/> {dict.daily.dinner}
+              </label>
+              <input 
+                type="text" 
+                placeholder={dict.daily.dinnerPlaceholder}
+                className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium"
+              />
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-border">
+            <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-2"><Edit3 size={14}/> {dict.daily.diary}</label>
+            <textarea 
+              placeholder={dict.daily.diaryPlaceholder}
+              className="w-full h-32 bg-background border border-border rounded-xl p-4 resize-none focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
+            ></textarea>
+          </div>
+        </div>
+      </section>
+
+      {/* Sleep & Wake (入れ替え＆アコーディオン化) */}
+      <section>
+        <div 
+          onClick={() => setIsSleepExpanded(!isSleepExpanded)}
+          className={`bg-white rounded-2xl shadow-sm border transition-all cursor-pointer select-none
+            ${isSleepExpanded ? "border-primary/40 ring-2 ring-primary/10 p-5" : "border-border hover:border-primary/30 p-4"}
+          `}
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-lg flex items-center gap-2 text-foreground">
+              <Moon className="text-primary" size={20}/> 
+              睡眠時間
+            </h2>
+            <div className="flex items-center gap-3">
+              <span className="font-bold border px-3 py-1 rounded-lg text-sm" style={{ color: sleepInfo.color, borderColor: sleepInfo.color, backgroundColor: `${sleepInfo.color}10` }}>
+                {sleepInfo.text}
+              </span>
+              <div className={`p-1 rounded-full hover:bg-muted transition-colors ${isSleepExpanded ? "bg-muted" : ""}`}>
+                <ChevronDown size={18} className={`text-muted-foreground transition-transform duration-300 ${isSleepExpanded ? "rotate-180" : ""}`} />
+              </div>
+            </div>
+          </div>
+
+          {/* 展開される入力エリア */}
+          <div className={`grid transition-all duration-300 ease-in-out ${isSleepExpanded ? "grid-rows-[1fr] opacity-100 mt-5 pt-5 border-t border-border" : "grid-rows-[0fr] opacity-0"}`}>
+            <div className="overflow-hidden">
+               <div className="flex flex-col sm:flex-row gap-5">
+                 <div className="space-y-1.5 flex-1">
+                   <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Sun size={14}/> {dict.daily.wakeTime}</label>
+                   <input 
+                     type="time" 
+                     value={wakeTime} 
+                     step="300"
+                     onChange={(e) => setWakeTime(e.target.value)}
+                     className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground cursor-pointer" 
+                   />
+                 </div>
+                 <div className="space-y-1.5 flex-1">
+                   <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Moon size={14}/> {dict.daily.bedTime}</label>
+                   <input 
+                     type="time" 
+                     value={bedTime} 
+                     step="300"
+                     onChange={(e) => setBedTime(e.target.value)}
+                     className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground cursor-pointer" 
+                   />
+                 </div>
+               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Manual Fulfillment Slider */}
+      <section className="bg-white p-5 rounded-2xl shadow-sm border border-border transition-all">
+        <label htmlFor="fulfillment-slider" className="flex justify-between items-end mb-4 cursor-pointer">
+          <h2 className="font-semibold text-xl text-foreground tracking-tight">{dict.daily.fulfillment}</h2>
+          <span className="font-bold text-3xl" style={{ color: progressColor }}>{progressPercent}%</span>
+        </label>
+        
+        <input 
+          id="fulfillment-slider"
+          type="range" 
+          min="0" 
+          max="100" 
+          value={progressPercent}
+          onChange={(e) => setProgressPercent(Number(e.target.value))}
+          style={{ 
+            backgroundImage: `linear-gradient(to right, ${progressColor} ${progressPercent}%, var(--muted) ${progressPercent}%)` 
+          }}
+          className="w-full h-4 bg-muted rounded-full appearance-none outline-none cursor-pointer transition-all duration-300 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border-2 hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125"
+        />
+        <style jsx>{`
+          input[type=range]::-webkit-slider-thumb {
+            border-color: ${progressColor};
+          }
+        `}</style>
+      </section>
+      
+    </div>
+  );
+}
+
+export default function DailyPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center animate-pulse">Loading...</div>}>
+      <DailyContent />
+    </Suspense>
+  )
 }
