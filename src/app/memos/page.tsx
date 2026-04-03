@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { 
   PenTool, Search, Tag, Edit2, Trash2, Settings2, Star, Pin, X, Plus, Save, Loader2, Bookmark, CalendarDays, ChevronRight
 } from "lucide-react";
-import { collection, query, onSnapshot, orderBy, serverTimestamp } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { 
   saveMemo, 
@@ -100,7 +100,7 @@ export default function MemosPage() {
     if (!user || !inputMemoText.trim()) return;
     setIsSaving(true);
     try {
-      const memoData: any = {
+      const memoData: Partial<Memo> = {
         text: inputMemoText,
         date: new Date().toLocaleDateString(), 
         tags: inputMemoTags,
@@ -121,13 +121,14 @@ export default function MemosPage() {
         memoData.isPinned = false;
       }
 
-      await saveMemo(user.uid, memoData, editingMemoId || undefined);
+      await saveMemo(user.uid, memoData as Omit<Memo, 'id'>, editingMemoId || undefined);
       setInputMemoText("");
       setInputMemoTags([]);
       setEditingMemoId(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
       console.error("Save Error:", err);
-      alert("保存中にエラーが発生しました: " + (err.message || "Unknown error"));
+      alert("保存中にエラーが発生しました: " + errorMsg);
     } finally {
       setIsSaving(false);
     }
@@ -177,7 +178,7 @@ export default function MemosPage() {
   const handleQuickDateFilter = (filter: string) => {
     const now = new Date();
     let start = "";
-    let end = format(now, 'yyyy-MM-dd');
+    const end = format(now, 'yyyy-MM-dd');
 
     if (filter === 'today') {
       start = end;
@@ -216,9 +217,11 @@ export default function MemosPage() {
   // Date Range Filtering
   if (startDate || endDate) {
     filteredMemos = filteredMemos.filter(m => {
-      if (!m.createdAt) return true; // Firestore's local pending writes might not have createdAt yet
-      const memoDate = m.createdAt.toDate();
-      const memoDateStr = format(memoDate, 'yyyy-MM-dd');
+      // safe access for Timestamp
+      const createdAt = m.createdAt instanceof Timestamp ? m.createdAt.toDate() : null;
+      if (!createdAt) return true; 
+
+      const memoDateStr = format(createdAt, 'yyyy-MM-dd');
       
       if (startDate && memoDateStr < startDate) return false;
       if (endDate && memoDateStr > endDate) return false;
@@ -232,8 +235,8 @@ export default function MemosPage() {
     if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
     
     // 2. 作成日時順 (新しい順)
-    const timeA = a.createdAt?.seconds || 0;
-    const timeB = b.createdAt?.seconds || 0;
+    const timeA = (a.createdAt instanceof Timestamp) ? a.createdAt.seconds : 0;
+    const timeB = (b.createdAt instanceof Timestamp) ? b.createdAt.seconds : 0;
     return timeB - timeA;
   });
 

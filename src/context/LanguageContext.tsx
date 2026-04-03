@@ -18,7 +18,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const saved = localStorage.getItem('compass_language') as Language;
     if (saved && (saved === 'en' || saved === 'ja')) {
-      setLanguage(saved);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLanguage(prev => (prev !== saved ? saved : prev));
     }
     setMounted(true);
   }, []);

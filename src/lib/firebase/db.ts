@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy } from "firebase/firestore";
+import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, Timestamp, FieldValue, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
 
 // ====== Types ======
@@ -21,8 +21,8 @@ export interface DailyLog {
   date: string; // YYYY-MM-DD (Document ID)
   wakeTime: string;
   bedTime: string;
-  routines: any[];
-  todos: any[];
+  routines: string[]; // または詳細な型
+  todos: string[];
   dinner: string;
   diary: string;
   fulfillment: number;
@@ -43,7 +43,8 @@ export interface Memo {
   tags: string[]; // tag IDs or names
   isFavorite: boolean;
   isPinned: boolean;
-  createdAt: any;
+  createdAt: Timestamp | FieldValue | null;
+  updatedAt?: Timestamp | FieldValue | null;
 }
 
 // ====== Study Materials (教材管理) ======
@@ -125,9 +126,9 @@ export const saveMemo = async (userId: string, memo: Omit<Memo, 'id'>, memoId?: 
     : doc(collection(db, `users/${userId}/memos`));
   
   // もしmemo自体にupdatedAtがなければ、ここでセットする
-  const data = { ...memo };
-  if (!(data as any).updatedAt) {
-    (data as any).updatedAt = new Date(); // Fallback
+  const data: Partial<Memo> = { ...memo };
+  if (!data.updatedAt) {
+    data.updatedAt = serverTimestamp(); // Corrected: use serverTimestamp instead of new Date() as any
   }
   
   await setDoc(ref, data, { merge: true });
