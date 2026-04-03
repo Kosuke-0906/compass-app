@@ -53,6 +53,8 @@ export interface Goal {
   title: string;
   type: 'year' | 'month' | 'longterm';
   date: string; // YYYY-MM-DD
+  deadline?: string; // YYYY-MM-DD
+  tags?: string[];
   isCompleted: boolean;
   createdAt: Timestamp | FieldValue | null;
 }

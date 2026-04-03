@@ -17,7 +17,9 @@ import {
   CalendarDays, 
   X,
   PlusCircle,
-  Loader2
+  Loader2,
+  Calendar as CalendarIcon,
+  Tag as TagIcon
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
@@ -42,6 +44,8 @@ export default function GoalsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editGoalId, setEditGoalId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
+  const [newDeadline, setNewDeadline] = useState("");
+  const [newTags, setNewTags] = useState("");
   const [newType, setNewType] = useState<'year' | 'month' | 'longterm'>('month');
 
   // リアルタイム取得
@@ -62,20 +66,29 @@ export default function GoalsPage() {
   const handleSave = async () => {
     if (!user || !newTitle.trim()) return;
     try {
+      const tagsArray = newTags.split(/[,，、\s]+/).filter(t => t.trim() !== "");
       const gData = {
         title: newTitle.trim(),
         type: newType,
-        date: format(new Date(), "yyyy-MM-dd"), // 簡易的に今日の日付を基準にする
+        date: format(new Date(), "yyyy-MM-dd"),
+        deadline: newDeadline || undefined,
+        tags: tagsArray.length > 0 ? tagsArray : undefined,
         isCompleted: false
       };
       await saveGoal(user.uid, gData, editGoalId || undefined);
-      setIsModalOpen(false);
-      setNewTitle("");
-      setEditGoalId(null);
+      closeModal();
     } catch (err) {
       console.error(err);
       alert("エラーが発生しました。");
     }
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setNewTitle("");
+    setNewDeadline("");
+    setNewTags("");
+    setEditGoalId(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -100,6 +113,8 @@ export default function GoalsPage() {
     setNewType(type);
     setEditGoalId(null);
     setNewTitle("");
+    setNewDeadline("");
+    setNewTags("");
     setIsModalOpen(true);
   };
 
@@ -107,26 +122,42 @@ export default function GoalsPage() {
     setNewType(goal.type);
     setEditGoalId(goal.id);
     setNewTitle(goal.title);
+    setNewDeadline(goal.deadline || "");
+    setNewTags(goal.tags?.join(", ") || "");
     setIsModalOpen(true);
   };
 
   const GoalCard = ({ goal }: { goal: Goal }) => {
-    const Icon = goal.type === 'year' ? Target : goal.type === 'month' ? Flag : Mountain;
     return (
-      <div className={`p-4 rounded-xl flex flex-col gap-2 relative group transition-all border ${goal.isCompleted ? 'bg-white shadow-sm border-border opacity-75' : 'bg-primary/5 border-primary/20 hover:shadow-md'}`}>
+      <div className={`p-4 rounded-xl flex flex-col gap-2 relative group transition-all border ${goal.isCompleted ? 'bg-white shadow-sm border-border opacity-75' : 'bg-primary/5 border-primary/20 hover:shadow-md hover:border-primary/40'}`}>
         <div className="flex items-start gap-3">
           <button onClick={() => handleToggle(goal)} className="shrink-0 mt-0.5 transition-transform active:scale-95">
-            {goal.isCompleted ? <CheckCircle2 className="text-green-500" size={20} /> : <div className="w-5 h-5 border-2 border-primary/30 rounded-full" />}
+            {goal.isCompleted ? <CheckCircle2 className="text-green-500" size={18} /> : <div className="w-4.5 h-4.5 border-2 border-primary/30 rounded-full" />}
           </button>
           <div className="flex-1 pr-10">
-            <p className={`font-bold text-lg leading-tight transition-all ${goal.isCompleted ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+            <p className={`font-semibold text-base leading-tight transition-all ${goal.isCompleted ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
               {goal.title}
             </p>
+            
+            {(goal.deadline || (goal.tags && goal.tags.length > 0)) && (
+              <div className="flex flex-wrap items-center gap-3 mt-2">
+                {goal.deadline && (
+                  <span className="text-[10px] font-bold text-primary flex items-center gap-1 bg-primary/10 px-1.5 py-0.5 rounded">
+                    <CalendarIcon size={10} /> {goal.deadline}
+                  </span>
+                )}
+                {goal.tags?.map(tag => (
+                  <span key={tag} className="text-[10px] font-bold text-muted-foreground flex items-center gap-1 bg-muted px-1.5 py-0.5 rounded border border-border">
+                    <TagIcon size={10} /> {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-        <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => openEditModal(goal)} className="text-muted-foreground hover:text-primary p-1"><Edit2 size={14} /></button>
-          <button onClick={() => handleDelete(goal.id)} className="text-muted-foreground hover:text-red-500 p-1"><Trash2 size={14} /></button>
+        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={() => openEditModal(goal)} className="text-muted-foreground hover:text-primary p-1.5 rounded-full hover:bg-white transition-colors"><Edit2 size={14} /></button>
+          <button onClick={() => handleDelete(goal.id)} className="text-muted-foreground hover:text-red-500 p-1.5 rounded-full hover:bg-white transition-colors"><Trash2 size={14} /></button>
         </div>
       </div>
     );
@@ -140,11 +171,11 @@ export default function GoalsPage() {
       <section className="space-y-3 bg-white p-5 rounded-2xl shadow-sm border border-border">
         <div className="flex items-center justify-between">
           <button onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-2 text-left focus:outline-none hover:opacity-80 transition-opacity">
-            <h2 className="font-semibold text-xl flex items-center gap-2 tracking-tight">
-              <Icon className="text-primary" size={22}/> {title}
+            <h2 className="font-semibold text-lg flex items-center gap-2 tracking-tight">
+              <Icon className="text-primary" size={20}/> {title}
             </h2>
             <div className="text-muted-foreground">
-              {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+              {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </div>
           </button>
           <button onClick={() => openAddModal(type)} className="text-primary hover:bg-primary/10 p-1.5 rounded-full transition-colors">
@@ -154,15 +185,15 @@ export default function GoalsPage() {
         {isOpen && (
           <div className="grid gap-3 pt-3 border-t border-border mt-3 animate-in fade-in duration-300">
             {filterGoals.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-4">{dict.goals.addGoal}からはじめましょう</p>
+              <p className="text-xs text-muted-foreground text-center py-4">「＋」ボタンから目標を設定しましょう</p>
             ) : (
               filterGoals.map(g => <GoalCard key={g.id} goal={g} />)
             )}
             <button 
               onClick={() => openAddModal(type)}
-              className="flex items-center justify-center gap-2 p-3.5 border-2 border-dashed border-border rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-primary hover:border-primary/50 transition-all font-medium text-sm"
+              className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-border rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-primary hover:border-primary/50 transition-all font-medium text-sm"
             >
-              <Plus size={18} /> {dict.goals.addGoal}
+              <Plus size={16} /> 目標を追加
             </button>
           </div>
         )}
@@ -191,39 +222,65 @@ export default function GoalsPage() {
 
       <CollapsibleSection title="今年の目標" type="year" icon={Target} />
       <CollapsibleSection title="今月の目標" type="month" icon={Flag} />
-      <CollapsibleSection title="長期ターゲット" type="longterm" icon={Mountain} />
+      <CollapsibleSection title="ターゲット" type="longterm" icon={Mountain} />
 
       {/* 目標追加モーダル */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setIsModalOpen(false)}>
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={closeModal}>
+          <div className="bg-white w-full max-w-sm rounded-[2rem] p-7 shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold flex items-center gap-2">
-                <PlusCircle className="text-primary" size={22} />
-                {editGoalId ? "目標を編集" : "目標を追加"}
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <PlusCircle className="text-primary" size={24} />
+                {editGoalId ? "目標を編集" : "目標を設定"}
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-1.5 rounded-full hover:bg-muted transition-colors"><X size={20} /></button>
+              <button onClick={closeModal} className="p-2 rounded-full hover:bg-muted transition-colors"><X size={20} /></button>
             </div>
             
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="space-y-2">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">目標の内容</label>
+                <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">目標の内容</label>
                 <textarea 
                   value={newTitle}
                   onChange={e => setNewTitle(e.target.value)}
-                  className="w-full border border-border rounded-2xl p-4 text-base focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all min-h-[100px]"
+                  className="w-full border border-border rounded-2xl p-4 text-base focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all min-h-[100px] resize-none bg-muted/20"
                   placeholder="何を実現しますか？"
                   autoFocus
                 />
               </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1 flex items-center gap-1">
+                    <CalendarIcon size={12} /> 達成期日 (任意)
+                  </label>
+                  <input 
+                    type="date"
+                    value={newDeadline}
+                    onChange={e => setNewDeadline(e.target.value)}
+                    className="w-full border border-border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all bg-muted/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1 flex items-center gap-1">
+                    <TagIcon size={12} /> タグ (カンマ区切り)
+                  </label>
+                  <input 
+                    type="text"
+                    value={newTags}
+                    onChange={e => setNewTags(e.target.value)}
+                    className="w-full border border-border rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all bg-muted/20"
+                    placeholder="仕事, 学習, 健康..."
+                  />
+                </div>
+              </div>
               
-              <div className="pt-2">
+              <div className="pt-4">
                 <button 
                   onClick={handleSave}
                   disabled={!newTitle.trim()}
-                  className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2"
+                  className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-black py-4.5 rounded-2xl shadow-xl shadow-primary/20 transition-all flex items-center justify-center gap-2 text-lg active:scale-95"
                 >
-                  {editGoalId ? "変更を保存" : "目標を刻む"}
+                  目標を設定する
                 </button>
               </div>
             </div>
