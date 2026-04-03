@@ -453,9 +453,9 @@ export default function StudyPage() {
 
       {/* 新機能: カスタムダイアログ（教材追加） */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center items-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex flex-col justify-center items-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div 
-            className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-5 sm:slide-in-from-bottom-2 duration-300 max-h-[90vh] overflow-y-auto"
+            className="bg-white w-[92%] sm:max-w-md sm:rounded-2xl rounded-2xl p-6 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 max-h-[80dvh] overflow-y-auto mb-20 sm:mb-0"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
