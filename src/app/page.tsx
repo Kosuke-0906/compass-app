@@ -7,7 +7,7 @@ import { CheckCircle2, Circle, Smartphone, BookOpen, Moon, Sun, Edit3, Plus, Rot
 import { format, parseISO } from "date-fns";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
-import { collection, doc, query, where, onSnapshot } from "firebase/firestore";
+import { collection, doc, query, where, onSnapshot, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import {
   saveRoutine, deleteRoutine, toggleRoutineCompletion, RoutineItem,
@@ -39,25 +39,34 @@ function DailyContent() {
   const [targetStudyMins, setTargetStudyMins] = useState(120);
   const [todayStudyMins, setTodayStudyMins] = useState<number | null>(null);
   const [dailyLogLoaded, setDailyLogLoaded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const { user } = useAuth();
   const todayStr = format(displayDate, "yyyy-MM-dd");
 
-  // onSnapshotの更新でsaveが走るのを防ぐフラグ
-  const skipSaveRef = useRef(true);
+  // 保存処理（共通）
+  const saveNow = async (data: any) => {
+    if (!user) return;
+    try {
+      setIsSaving(true);
+      await saveDailyLog(user.uid, todayStr, data);
+    } catch (err) {
+      console.error("[Compass] Save failed:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-  // DailyLogをonSnapshotでリアルタイム取得（メモと同じ方式）
+  // 読み込み（初回の一度だけ、または日付変更時のみ。他端末の上書きを避けるため）
   useEffect(() => {
     if (!user) return;
-    skipSaveRef.current = true;
     setDailyLogLoaded(false);
 
     const docRef = doc(db, `users/${user.uid}/dailyLogs`, todayStr);
-    const unsub = onSnapshot(docRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const log = snapshot.data();
-        // onSnapshotからの更新時はsaveをスキップ
-        skipSaveRef.current = true;
+    const load = async () => {
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const log = snap.data();
         setSchedule(log.schedule || "");
         setWakeTime(log.wakeTime || "07:00");
         setBedTime(log.bedTime || "23:30");
@@ -66,28 +75,25 @@ function DailyContent() {
         setProgressPercent(log.fulfillment ?? 50);
       }
       setDailyLogLoaded(true);
-      // 次のレンダー後にsaveを有効にする
-      setTimeout(() => { skipSaveRef.current = false; }, 100);
-    });
-
-    return () => unsub();
+    };
+    load();
   }, [user, todayStr]);
 
-  // DailyLogをFirebaseに自動保存（デバウンス）
-  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // フォーカスを失った時に保存
+  const handleBlur = () => {
+    if (dailyLogLoaded) {
+      saveNow({ schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent });
+    }
+  };
 
+  // ページ移動時（コンポーネント消滅時）の最終保存
   useEffect(() => {
-    if (!user || !dailyLogLoaded || skipSaveRef.current) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      console.log("[Compass] Saving DailyLog:", todayStr);
-      saveDailyLog(user.uid, todayStr, {
-        schedule, wakeTime, bedTime, dinner, diary,
-        fulfillment: progressPercent,
-      });
-      saveTimerRef.current = null;
-    }, 500);
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+    return () => {
+      if (user && dailyLogLoaded) {
+        // バックグラウンドで即座に保存を実行（awaitしない）
+        saveDailyLog(user.uid, todayStr, { schedule, wakeTime, bedTime, dinner, diary, fulfillment: progressPercent });
+      }
+    };
   }, [user, todayStr, dailyLogLoaded, schedule, wakeTime, bedTime, dinner, diary, progressPercent]);
 
   // ルーティンをFirebaseからリアルタイム取得
@@ -223,7 +229,13 @@ function DailyContent() {
   const clampRate = Math.min(achievementRate, 100);
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-10 animate-in fade-in zoom-in-95 duration-500 pb-24">
+    <div className="p-6 max-w-2xl mx-auto space-y-10 animate-in fade-in zoom-in-95 duration-500 pb-24 relative">
+      {/* Subtle Saving Indicator */}
+      <div className={`fixed bottom-20 right-6 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-border shadow-sm transition-all duration-300 ${isSaving ? "opacity-100 scale-100" : "opacity-0 scale-90"}`}>
+        <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Saving...</span>
+      </div>
+
       <header>
         <div className="flex items-end gap-3 mt-1 mb-4 flex-wrap">
           <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
@@ -247,6 +259,7 @@ function DailyContent() {
         <textarea 
           value={schedule}
           onChange={e => setSchedule(e.target.value)}
+          onBlur={handleBlur}
           placeholder={dict.daily.todaySchedulePlaceholder}
           className="w-full h-24 bg-white border border-border rounded-xl p-4 resize-none shadow-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
         ></textarea>
@@ -462,6 +475,7 @@ function DailyContent() {
                 type="text" 
                 value={dinner}
                 onChange={e => setDinner(e.target.value)}
+                onBlur={handleBlur}
                 placeholder={dict.daily.dinnerPlaceholder}
                 className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium"
               />
@@ -473,6 +487,7 @@ function DailyContent() {
             <textarea 
               value={diary}
               onChange={e => setDiary(e.target.value)}
+              onBlur={handleBlur}
               placeholder={dict.daily.diaryPlaceholder}
               className="w-full h-32 bg-background border border-border rounded-xl p-4 resize-none focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
             ></textarea>
@@ -514,6 +529,7 @@ function DailyContent() {
                      value={wakeTime} 
                      step="300"
                      onChange={(e) => setWakeTime(e.target.value)}
+                     onBlur={handleBlur}
                      className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground cursor-pointer" 
                    />
                  </div>
@@ -524,6 +540,7 @@ function DailyContent() {
                      value={bedTime} 
                      step="300"
                      onChange={(e) => setBedTime(e.target.value)}
+                     onBlur={handleBlur}
                      className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground cursor-pointer" 
                    />
                  </div>
@@ -547,6 +564,8 @@ function DailyContent() {
           max="100" 
           value={progressPercent}
           onChange={(e) => setProgressPercent(Number(e.target.value))}
+          onMouseUp={handleBlur}
+          onTouchEnd={handleBlur}
           style={{ 
             backgroundImage: `linear-gradient(to right, ${progressColor} ${progressPercent}%, var(--muted) ${progressPercent}%)` 
           }}

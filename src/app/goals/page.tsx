@@ -75,14 +75,15 @@ export default function GoalsPage() {
         isCompleted: false
       };
       
-      if (newDeadline) gData.deadline = newDeadline;
+      // 値がある場合のみ追加（undefinedエラーを回避）
+      if (newDeadline.trim()) gData.deadline = newDeadline;
       if (tagsArray.length > 0) gData.tags = tagsArray;
 
       await saveGoal(user.uid, gData, editGoalId || undefined);
       closeModal();
     } catch (err) {
-      console.error(err);
-      alert("エラーが発生しました。");
+      console.error("[Compass] Goal save error:", err);
+      alert("保存に失敗しました。");
     }
   };
 
