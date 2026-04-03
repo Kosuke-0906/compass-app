@@ -56,11 +56,16 @@ function DailyContent() {
     }
     
     // UIを少しポップにするためにLightnessを上げる
-    const color = `hsl(${sleepHue}, 85%, 45%)`;
+    // モダンな hsl(h s l / alpha) 形式で返す
+    const baseColor = `hsl(${sleepHue} 85% 40%)`;
+    const bgColor = `hsl(${sleepHue} 85% 40% / 0.1)`;
+    const borderColor = `hsl(${sleepHue} 85% 40% / 0.3)`;
 
     return {
-      text: `${h}h ${m}m`, // 文字を少し短縮
-      color: color
+      text: `${h}h ${m}m`, 
+      color: baseColor,
+      bg: bgColor,
+      border: borderColor
     };
   };
 
@@ -361,7 +366,7 @@ function DailyContent() {
               睡眠時間
             </h2>
             <div className="flex items-center gap-3">
-              <span className="font-bold border px-3 py-1 rounded-lg text-sm" style={{ color: sleepInfo.color, borderColor: sleepInfo.color, backgroundColor: `${sleepInfo.color}10` }}>
+              <span className="font-bold border px-3 py-1 rounded-lg text-sm" style={{ color: sleepInfo.color, borderColor: sleepInfo.border, backgroundColor: sleepInfo.bg }}>
                 {sleepInfo.text}
               </span>
               <div className={`p-1 rounded-full hover:bg-muted transition-colors ${isSleepExpanded ? "bg-muted" : ""}`}>
