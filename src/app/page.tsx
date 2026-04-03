@@ -17,7 +17,8 @@ import {
   BookOpen, 
   BarChart2, 
   Clock,
-  ChevronRight
+  ChevronRight,
+  Target
 } from "lucide-react";
 import { format, parseISO, startOfDay, isToday } from "date-fns";
 import { useLanguage } from "@/context/LanguageContext";
@@ -355,9 +356,9 @@ function DailyContent() {
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-bold text-xl flex items-center gap-2"><CalendarClock className="text-primary" size={22}/> {dict.daily.todaySchedule}</h2>
-          {isDirty.schedule && <button onClick={() => saveField('schedule', schedule)} className="bg-primary text-white px-3 py-1 rounded-full text-xs font-bold">保存</button>}
+          {isDirty.schedule && <button onClick={() => saveField('schedule', schedule)} className="bg-primary text-white px-3 py-1 rounded-full text-xs font-bold shadow-md hover:brightness-110">保存</button>}
         </div>
-        <textarea value={schedule} onChange={e => handleFieldChange('schedule', e.target.value, setSchedule)} placeholder={dict.daily.todaySchedulePlaceholder} className="w-full h-24 bg-white border border-gray-100 rounded-xl p-4 resize-none text-sm shadow-sm"></textarea>
+        <textarea value={schedule} onChange={e => handleFieldChange('schedule', e.target.value, setSchedule)} placeholder={dict.daily.todaySchedulePlaceholder} className="w-full h-24 bg-white border border-gray-100 rounded-xl p-4 resize-none text-sm shadow-sm outline-none"></textarea>
       </section>
 
       {/* Routines */}
@@ -439,34 +440,59 @@ function DailyContent() {
         </div>
       </section>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4">
-        <Link href="/study" className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-2">
-          <div className="flex justify-between items-center text-muted-foreground"><span className="text-[10px] font-bold uppercase tracking-wider">{dict.daily.studyTime}</span><BarChart2 size={14} /></div>
-          <div className="flex items-baseline gap-1 font-black text-xl">
-             {Math.floor((todayStudyMins || 0) / 60)}<span className="text-[10px]">h</span> {(todayStudyMins || 0) % 60}<span className="text-[10px]">m</span>
+      {/* 今日のデータ (Today's Data) */}
+      <section className="space-y-4">
+        <h2 className="font-bold text-xl flex items-center gap-2"><Target className="text-primary" size={22}/> 今日のデータ</h2>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Link href="/study" className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-2">
+              <div className="flex justify-between items-center text-muted-foreground"><span className="text-[10px] font-bold uppercase tracking-wider">{dict.daily.studyTime}</span><BarChart2 size={14} /></div>
+              <div className="flex items-baseline gap-1 font-black text-xl">
+                 {Math.floor((todayStudyMins || 0) / 60)}<span className="text-[10px]">h</span> {(todayStudyMins || 0) % 60}<span className="text-[10px]">m</span>
+              </div>
+            </Link>
+            <Link href="/reading" className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-2">
+              <div className="flex justify-between items-center text-muted-foreground"><span className="text-[10px] font-bold uppercase tracking-wider">{dict.daily.readingTime}</span><BookOpen size={14} /></div>
+              <div className="flex items-baseline gap-1 font-black text-xl">
+                 {Math.floor((todayReadingMins || 0) / 60)}<span className="text-[10px]">h</span> {(todayReadingMins || 0) % 60}<span className="text-[10px]">m</span>
+              </div>
+            </Link>
           </div>
-        </Link>
-        <Link href="/reading" className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-2">
-          <div className="flex justify-between items-center text-muted-foreground"><span className="text-[10px] font-bold uppercase tracking-wider">{dict.daily.readingTime}</span><BookOpen size={14} /></div>
-          <div className="flex items-baseline gap-1 font-black text-xl">
-             {Math.floor((todayReadingMins || 0) / 60)}<span className="text-[10px]">h</span> {(todayReadingMins || 0) % 60}<span className="text-[10px]">m</span>
-          </div>
-        </Link>
-      </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <section className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+              <button onClick={() => setIsSleepExpanded(!isSleepExpanded)} className="w-full p-5 flex flex-col items-center gap-2 hover:bg-gray-50 transition-colors">
+                <div className="flex items-center gap-3 w-full justify-center">
+                  <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><Clock size={20} /></div>
+                  <h2 className="font-bold text-sm">睡眠時間</h2>
+                </div>
+                <div className="flex flex-col items-center">
+                   <p className="font-black text-xl">{sleepInfo.text}</p>
+                   <p className="text-[10px] font-bold" style={{ color: sleepInfo.color }}>Healthy</p>
+                </div>
+              </button>
+              {isSleepExpanded && (
+                <div className="p-4 pt-0 border-t border-gray-50 grid grid-cols-1 gap-3 animate-in slide-in-from-top-2">
+                   <div><label className="text-[10px] font-bold opacity-50 block mb-1 text-center">起床</label><input type="time" value={wakeTime} onChange={e => handleFieldChange("wakeTime", e.target.value, setWakeTime)} onBlur={() => saveField("wakeTime", wakeTime)} className="w-full p-2 border border-gray-100 rounded-xl text-xs font-bold text-center" /></div>
+                   <div><label className="text-[10px] font-bold opacity-50 block mb-1 text-center">就寝</label><input type="time" value={bedTime} onChange={e => handleFieldChange("bedTime", e.target.value, setBedTime)} onBlur={() => saveField("bedTime", bedTime)} className="w-full p-2 border border-gray-100 rounded-xl text-xs font-bold text-center" /></div>
+                </div>
+              )}
+            </section>
 
-      {/* Sleep */}
-      <section className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-        <button onClick={() => setIsSleepExpanded(!isSleepExpanded)} className="w-full p-5 flex items-center justify-between hover:bg-gray-50 transition-colors">
-          <div className="flex items-center gap-3"><div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><Clock size={20} /></div><div><h2 className="font-bold text-sm">{dict.daily.sleepAndWake}</h2></div></div>
-          <div className="flex items-center gap-3 text-right"><div><p className="font-black">{sleepInfo.text}</p><p className="text-[10px] font-bold" style={{ color: sleepInfo.color }}>Healthy</p></div><ChevronRight className={`transition-transform ${isSleepExpanded ? "rotate-90" : ""}`} size={16} /></div>
-        </button>
-        {isSleepExpanded && (
-          <div className="p-5 pt-0 border-t border-gray-50 grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
-            <div><label className="text-[10px] font-bold opacity-50 block mb-1">起床</label><input type="time" value={wakeTime} onChange={e => handleFieldChange("wakeTime", e.target.value, setWakeTime)} onBlur={() => saveField("wakeTime", wakeTime)} className="w-full p-2 border border-gray-100 rounded-xl text-sm font-bold shadow-sm" /></div>
-            <div><label className="text-[10px] font-bold opacity-50 block mb-1">就寝</label><input type="time" value={bedTime} onChange={e => handleFieldChange("bedTime", e.target.value, setBedTime)} onBlur={() => saveField("bedTime", bedTime)} className="w-full p-2 border border-gray-100 rounded-xl text-sm font-bold shadow-sm" /></div>
+            <section className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col items-center justify-center gap-3">
+               <div className="flex items-center gap-2">
+                  <Smartphone size={18} className="text-muted-foreground" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">{dict.daily.phoneTime}</span>
+               </div>
+               <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-1 font-black text-xl">
+                     {Math.floor(phoneTimeMins / 60)}<span className="text-[10px]">h</span> {phoneTimeMins % 60}<span className="text-[10px]">m</span>
+                  </div>
+                  {renderTimeSelectors(phoneTimeMins, val => handleFieldChange("phoneTimeMins", val, setPhoneTimeMins))}
+               </div>
+            </section>
           </div>
-        )}
+        </div>
       </section>
 
       {/* Reflection */}
@@ -476,11 +502,14 @@ function DailyContent() {
           {(isDirty.diary || isDirty.dinner || isDirty.phoneTimeMins) && <button onClick={async () => { if (isDirty.diary) await saveField('diary', diary); if (isDirty.dinner) await saveField('dinner', dinner); if (isDirty.phoneTimeMins) await saveField('phoneTimeMins', phoneTimeMins); }} className="bg-primary text-white px-3 py-1 rounded-full text-xs font-bold shadow-md">保存</button>}
         </div>
         <div className="bg-white p-5 rounded-2xl border border-gray-100 space-y-4 shadow-sm">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1"><label className="text-[10px] font-bold opacity-50 flex items-center gap-1"><Smartphone size={10}/> {dict.daily.phoneTime}</label>{renderTimeSelectors(phoneTimeMins, val => handleFieldChange("phoneTimeMins", val, setPhoneTimeMins))}</div>
-            <div className="space-y-1"><label className="text-[10px] font-bold opacity-50 flex items-center gap-1"><Utensils size={10}/> {dict.daily.dinner}</label><input type="text" value={dinner} onChange={e => handleFieldChange('dinner', e.target.value, setDinner)} placeholder="..." className="w-full bg-gray-50 border border-gray-100 rounded-lg p-2 text-sm outline-none font-medium" /></div>
+          <div className="space-y-1">
+             <label className="text-[10px] font-bold opacity-50 flex items-center gap-1"><Utensils size={10}/> {dict.daily.dinner}</label>
+             <input type="text" value={dinner} onChange={e => handleFieldChange('dinner', e.target.value, setDinner)} placeholder="..." className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm outline-none font-medium" />
           </div>
-          <div className="pt-2"><label className="text-[10px] font-bold opacity-50 block mb-1">{dict.daily.diary}</label><textarea value={diary} onChange={e => handleFieldChange('diary', e.target.value, setDiary)} className="w-full h-32 bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm resize-none outline-none"></textarea></div>
+          <div className="pt-2">
+             <label className="text-[10px] font-bold opacity-50 block mb-1">{dict.daily.diary}</label>
+             <textarea value={diary} onChange={e => handleFieldChange('diary', e.target.value, setDiary)} className="w-full h-32 bg-gray-50 border border-gray-100 p-4 rounded-xl text-sm resize-none outline-none"></textarea>
+          </div>
         </div>
       </div>
 
