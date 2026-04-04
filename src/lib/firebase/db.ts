@@ -239,7 +239,16 @@ export const saveRoutine = async (userId: string, routine: { text: string; date:
   const ref = routineId
     ? doc(db, `users/${userId}/routines`, routineId)
     : doc(collection(db, `users/${userId}/routines`));
-  const data: Record<string, unknown> = { ...routine };
+  
+  // Ensure we are sending a clean object with number types for achievement
+  const data: Record<string, unknown> = {
+    text: routine.text,
+    date: routine.date,
+    completed: routine.completed,
+    achievement: routine.achievement || 1, // Default to 1 if missing
+    comment: routine.comment || ""
+  };
+  
   if (!routineId) data.createdAt = serverTimestamp();
   await setDoc(ref, data, { merge: true });
   return ref.id;
@@ -272,7 +281,15 @@ export const saveTodo = async (userId: string, todo: { text: string; date: strin
   const ref = todoId
     ? doc(db, `users/${userId}/todos`, todoId)
     : doc(collection(db, `users/${userId}/todos`));
-  const data: Record<string, unknown> = { ...todo };
+  
+  const data: Record<string, unknown> = {
+    text: todo.text,
+    date: todo.date,
+    completed: todo.completed,
+    achievement: todo.achievement || 1,
+    comment: todo.comment || ""
+  };
+  
   if (!todoId) data.createdAt = serverTimestamp();
   await setDoc(ref, data, { merge: true });
   return ref.id;

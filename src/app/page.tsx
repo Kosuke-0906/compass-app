@@ -283,22 +283,35 @@ function DailyContent() {
   const handleUpdateRoutine = async (routine: RoutineItem, updates: Partial<RoutineItem>) => {
     if (!user) return;
     const updated = { ...routine, ...updates };
-    setRoutines(prev => prev.map(r => r.id === routine.id ? updated : r));
+    
+    // 5なら完了とする（互換性のため）
+    const isCompleted = (updated.achievement !== undefined) ? updated.achievement >= 5 : updated.completed;
+    const finalUpdate = { ...updated, completed: isCompleted };
+
+    setRoutines(prev => prev.map(r => r.id === routine.id ? finalUpdate : r));
     await saveRoutine(user.uid, { 
-      text: updated.text, date: updated.date, 
-      completed: (updated.achievement || 0) >= 5, 
-      achievement: updated.achievement, comment: updated.comment 
+      text: finalUpdate.text, 
+      date: finalUpdate.date, 
+      completed: finalUpdate.completed, 
+      achievement: finalUpdate.achievement, 
+      comment: finalUpdate.comment 
     }, routine.id);
   };
 
   const handleUpdateTodo = async (todo: TodoItem, updates: Partial<TodoItem>) => {
     if (!user) return;
     const updated = { ...todo, ...updates };
-    setTodos(prev => prev.map(t => t.id === todo.id ? updated : t));
+    
+    const isCompleted = (updated.achievement !== undefined) ? updated.achievement >= 5 : updated.completed;
+    const finalUpdate = { ...updated, completed: isCompleted };
+
+    setTodos(prev => prev.map(t => t.id === todo.id ? finalUpdate : t));
     await saveTodo(user.uid, { 
-      text: updated.text, date: updated.date, 
-      completed: (updated.achievement || 0) >= 5,
-      achievement: updated.achievement, comment: updated.comment 
+      text: finalUpdate.text, 
+      date: finalUpdate.date, 
+      completed: finalUpdate.completed, 
+      achievement: finalUpdate.achievement, 
+      comment: finalUpdate.comment 
     }, todo.id);
   };
 
