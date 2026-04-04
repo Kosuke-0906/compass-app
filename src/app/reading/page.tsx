@@ -84,7 +84,7 @@ export default function ReadingPage() {
        setReadingLogs(logs);
     });
     return () => unsub();
-  }, [user, selectedBook?.id]);
+  }, [user, selectedBook?.id, selectedBook]);
 
   const handleAddBook = async () => {
     if (!user || !newBookTitle.trim()) return;
@@ -183,7 +183,7 @@ export default function ReadingPage() {
       const matchesSearch = book.title.toLowerCase().includes(q);
       
       let matchesDate = true;
-      if (hasDateFilter) {
+      if (hasDateFilter && book.startDate) {
         const bookDate = parseISO(book.startDate);
         matchesDate = isWithinInterval(bookDate, { start: startBound, end: endBound });
       }

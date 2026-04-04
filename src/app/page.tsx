@@ -88,7 +88,7 @@ function DailyContent() {
   const todayStr = format(displayDate, "yyyy-MM-dd");
   
   // LocalStorage用のキー（ユーザーIDと日付を含む）
-  const getDraftKey = () => `compass_draft_${user?.uid}_${todayStr}`;
+  const getDraftKey = React.useCallback(() => `compass_draft_${user?.uid}_${todayStr}`, [user?.uid, todayStr]);
 
   // 1. 初期ロード & LocalStorageからの復旧
   useEffect(() => {
@@ -204,7 +204,7 @@ function DailyContent() {
       };
       saveFulfillment();
     }
-  }, [calculatedFulfillment, user, todayStr, dailyLogLoaded, progressPercent, routines.length, todos.length]);
+  }, [calculatedFulfillment, user, todayStr, dailyLogLoaded, progressPercent]);
 
   // 今日の勉強時間を取得
   useEffect(() => {
