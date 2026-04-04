@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, Suspense } from "react";
+import React, { useState, useMemo, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { 
@@ -82,6 +82,7 @@ function DailyContent() {
   const [dailyLogLoaded, setDailyLogLoaded] = useState(false);
   const [isSavingField, setIsSavingField] = useState<Record<string, boolean>>({});
   const [isDirty, setIsDirty] = useState<Record<string, boolean>>({});
+  const provisioningRef = React.useRef<Record<string, boolean>>({});
 
   const { user } = useAuth();
   const todayStr = format(displayDate, "yyyy-MM-dd");
@@ -157,13 +158,16 @@ function DailyContent() {
     const unsubRoutines = onSnapshot(qRoutines, async (snap) => {
       let fetchedRoutines = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RoutineItem));
       
-      // ルーティンが空で、今日の日付の場合のみマスタールーティンからコピー
-      if (fetchedRoutines.length === 0 && isToday(displayDate)) {
+      // ルーティンが空で、今日以降の日付の場合のみマスタールーティンからコピー
+      const isFutureOrToday = displayDate >= startOfDay(new Date());
+      if (fetchedRoutines.length === 0 && isFutureOrToday && !provisioningRef.current[todayStr]) {
+        provisioningRef.current[todayStr] = true;
         const masterData = await getMasterRoutines(user.uid);
         if (masterData.length > 0) {
-          for (const m of masterData) {
-            await saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 });
-          }
+          // Promise.allで一括保存（順序は問わない）
+          await Promise.all(masterData.map(m => 
+            saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 })
+          ));
         }
       }
       setRoutines(fetchedRoutines);
