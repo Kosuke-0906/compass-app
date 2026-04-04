@@ -183,9 +183,29 @@ function DailyContent() {
 
   // ルーティンの初回プロビジョニング（マスタールーティンからのコピー）
   useEffect(() => {
-    // ユーザー、基本ログ、ルーティン一覧が「完全にロード完了」した後に判定
     if (!user || !dailyLogLoaded || !routinesLoaded || provisioningRef.current[todayStr]) return;
     
+    // 現在の状態から重複をクリーンアップ（過去のバグで増殖した分を削除）
+    const cleanupDuplicates = async () => {
+      const seenTexts = new Set<string>();
+      const duplicatesToDelete: string[] = [];
+      
+      // text順などの決定論的なルールで最初の1つだけ残す
+      routines.forEach(r => {
+        if (seenTexts.has(r.text)) {
+          duplicatesToDelete.push(r.id);
+        } else {
+          seenTexts.add(r.text);
+        }
+      });
+
+      if (duplicatesToDelete.length > 0) {
+        console.log(`Cleaning up ${duplicatesToDelete.length} duplicate routines...`);
+        await Promise.all(duplicatesToDelete.map(id => deleteRoutine(user.uid, id)));
+      }
+    };
+    if (routines.length > 0) cleanupDuplicates();
+
     // 既にルーティンが存在する場合はプロビジョニング不要
     if (routines.length > 0) return;
 
@@ -197,12 +217,13 @@ function DailyContent() {
       const masterData = await getMasterRoutines(user.uid);
       
       if (masterData.length > 0) {
-        // 重複保存を避けるための追加チェック（念のため）
-        // Promise.allで並列実行する前に、現在の最新状態を再度考慮する
         for (const m of masterData) {
-          // 同じテキストのものが既にstateにないか（race condition対策）
+          // IDを決定論的に定義（テキストと日付から生成）
+          // これにより、万が一処理が二重に走っても、同じドキュメントへの上書きになるため「増殖」しない
+          const deterministicId = `master_${btoa(unescape(encodeURIComponent(m.text))).replace(/=/g, "")}_${todayStr}`;
+          
           if (!routines.some(r => r.text === m.text)) {
-            await saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 });
+            await saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 }, deterministicId);
           }
         }
       }
@@ -411,8 +432,9 @@ function DailyContent() {
               onClick={async () => {
                 const masterData = await getMasterRoutines(user?.uid || "");
                 for (const m of masterData) {
+                  const deterministicId = `master_${btoa(unescape(encodeURIComponent(m.text))).replace(/=/g, "")}_${todayStr}`;
                   if (!routines.some(r => r.text === m.text)) {
-                    await saveRoutine(user!.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 });
+                    await saveRoutine(user!.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 }, deterministicId);
                   }
                 }
               }}
