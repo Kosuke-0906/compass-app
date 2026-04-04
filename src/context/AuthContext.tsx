@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       // PWA standaloneモード(iPhoneホーム画面)ではリダイレクト、通常ブラウザではポップアップ
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-        || ('standalone' in window.navigator && (window.navigator as any).standalone);
+        || ('standalone' in window.navigator && (window.navigator as unknown as { standalone: boolean }).standalone);
       if (isStandalone) {
         await signInWithRedirect(auth, provider);
       } else {

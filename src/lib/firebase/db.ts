@@ -202,7 +202,7 @@ export const saveGoal = async (userId: string, goal: Omit<Goal, 'id' | 'createdA
     ? doc(db, `users/${userId}/goals`, goalId) 
     : doc(collection(db, `users/${userId}/goals`));
   
-  const data: any = { ...goal };
+  const data: Record<string, unknown> = { ...goal };
   if (!goalId) {
     data.createdAt = serverTimestamp();
   }
@@ -239,7 +239,7 @@ export const saveRoutine = async (userId: string, routine: { text: string; date:
   const ref = routineId
     ? doc(db, `users/${userId}/routines`, routineId)
     : doc(collection(db, `users/${userId}/routines`));
-  const data: any = { ...routine };
+  const data: Record<string, unknown> = { ...routine };
   if (!routineId) data.createdAt = serverTimestamp();
   await setDoc(ref, data, { merge: true });
   return ref.id;
@@ -272,7 +272,7 @@ export const saveTodo = async (userId: string, todo: { text: string; date: strin
   const ref = todoId
     ? doc(db, `users/${userId}/todos`, todoId)
     : doc(collection(db, `users/${userId}/todos`));
-  const data: any = { ...todo };
+  const data: Record<string, unknown> = { ...todo };
   if (!todoId) data.createdAt = serverTimestamp();
   await setDoc(ref, data, { merge: true });
   return ref.id;
@@ -317,7 +317,7 @@ export const saveReadingLog = async (userId: string, log: Omit<ReadingLog, 'id' 
   const ref = logId 
     ? doc(db, `users/${userId}/readingLogs`, logId)
     : doc(collection(db, `users/${userId}/readingLogs`));
-  const data: any = { ...log };
+  const data: Record<string, unknown> = { ...log };
   if (!logId) data.createdAt = serverTimestamp();
   await setDoc(ref, data, { merge: true });
   return ref.id;

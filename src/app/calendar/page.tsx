@@ -63,8 +63,8 @@ export default function CalendarPage() {
   // 長期ターゲット
   const longTermGoals = goals.filter(g => g.type === 'longterm');
 
-  const CustomDayButton = (props: any) => {
-    const { day, modifiers, className, ...buttonProps } = props;
+  const CustomDayButton = (props: { day: { date: Date }, modifiers: Record<string, boolean>, className?: string }) => {
+    const { day, className, ...buttonProps } = props;
     const date = day.date;
     
     return (
@@ -128,7 +128,7 @@ export default function CalendarPage() {
           toYear={2030}
           components={{
             DayButton: CustomDayButton
-          } as any}
+          } as React.ComponentProps<typeof DayPicker>["components"]}
         />
         <div className="mt-8 flex items-center justify-center gap-2 text-xs font-medium text-muted-foreground bg-muted/50 px-4 py-2 rounded-full">
            日付の下の数字はその日の「充実度」を表します。

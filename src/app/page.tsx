@@ -143,12 +143,11 @@ function DailyContent() {
     });
 
     return () => unsub();
-  }, [user, todayStr]);
+  }, [user, todayStr, getDraftKey]);
 
   // ルーティンとToDoの取得
   const [routines, setRoutines] = useState<RoutineItem[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
-  const [routinesLoaded, setRoutinesLoaded] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -156,7 +155,7 @@ function DailyContent() {
     // ルーティンの同期
     const qRoutines = query(collection(db, `users/${user.uid}/routines`), where("date", "==", todayStr));
     const unsubRoutines = onSnapshot(qRoutines, async (snap) => {
-      let fetchedRoutines = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RoutineItem));
+      const fetchedRoutines = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RoutineItem));
       
       // ルーティンが空で、今日以降の日付の場合のみマスタールーティンからコピー
       const isFutureOrToday = displayDate >= startOfDay(new Date());
@@ -171,7 +170,6 @@ function DailyContent() {
         }
       }
       setRoutines(fetchedRoutines);
-      setRoutinesLoaded(true);
     });
 
     // ToDoの同期
@@ -206,7 +204,7 @@ function DailyContent() {
       };
       saveFulfillment();
     }
-  }, [calculatedFulfillment, user, todayStr, dailyLogLoaded]);
+  }, [calculatedFulfillment, user, todayStr, dailyLogLoaded, progressPercent, routines.length, todos.length]);
 
   // 今日の勉強時間を取得
   useEffect(() => {
@@ -231,12 +229,12 @@ function DailyContent() {
   }, [user, todayStr]);
 
   // 保存処理
-  const saveField = async (field: string, value: any) => {
+  const saveField = async (field: string, value: unknown) => {
     if (!user) return;
     setIsSavingField(prev => ({ ...prev, [field]: true }));
     try {
       const docRef = doc(db, `users/${user.uid}/dailyLogs`, todayStr);
-      const updateData: any = {};
+      const updateData: Record<string, unknown> = {};
       const fieldMap: Record<string, string> = {
         schedule: 'schedule', diary: 'diary', fulfillment: 'fulfillment',
         wakeTime: 'wakeTime', bedTime: 'bedTime', dinner: 'dinner', phoneTimeMins: 'phoneTimeMins'
@@ -256,7 +254,7 @@ function DailyContent() {
     } catch (e) { console.error(e); } finally { setIsSavingField(prev => ({ ...prev, [field]: false })); }
   };
 
-  const handleFieldChange = (field: string, value: any, setter: Function) => {
+  const handleFieldChange = <T,>(field: string, value: T, setter: (val: T) => void) => {
     setter(value);
     setIsDirty(prev => ({ ...prev, [field]: true }));
     const savedDraft = localStorage.getItem(getDraftKey());

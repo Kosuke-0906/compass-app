@@ -68,7 +68,7 @@ export default function GoalsPage() {
     try {
       const tagsArray = newTags.split(/[,，、\s]+/).filter(t => t.trim() !== "");
       
-      const gData: any = {
+      const gData: Omit<Goal, 'id' | 'createdAt'> = {
         title: newTitle.trim(),
         type: newType,
         date: format(new Date(), "yyyy-MM-dd"),
@@ -167,7 +167,7 @@ export default function GoalsPage() {
     );
   };
 
-  const CollapsibleSection = ({ title, type, icon: Icon, defaultOpen = true }: { title: string, type: 'year' | 'month' | 'longterm', icon: any, defaultOpen?: boolean }) => {
+  const CollapsibleSection = ({ title, type, icon: Icon, defaultOpen = true }: { title: string, type: 'year' | 'month' | 'longterm', icon: React.ElementType, defaultOpen?: boolean }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
     const filterGoals = goals.filter(g => g.type === type);
     

@@ -103,7 +103,7 @@ export default function ReadingPage() {
   const handleUpdateProgress = async (book: Book, progress: number) => {
     if (!user) return;
     const { id, ...data } = book;
-    const updateData: any = { ...data, progress };
+    const updateData: Omit<Book, 'id'> = { ...data, progress };
     
     if (progress >= 100) {
       updateData.status = 'finished';
@@ -162,7 +162,7 @@ export default function ReadingPage() {
   const handleRevertToReading = async (book: Book) => {
     if (!user || !confirm(dict.daily.revertConfirm)) return;
     const { id, ...data } = book;
-    const updateData: any = { 
+    const updateData: Omit<Book, 'id'> = { 
       ...data, 
       status: 'reading', 
       progress: 99, 
@@ -171,8 +171,6 @@ export default function ReadingPage() {
     await saveBook(user.uid, updateData, id);
     setLocalProgress(prev => ({ ...prev, [id]: 99 }));
   };
-
-  if (loading) return <div className="p-10 text-center animate-pulse">Loading...</div>;
 
   // Apply filters with Memoization
   const filteredBooks = useMemo(() => {
@@ -202,6 +200,8 @@ export default function ReadingPage() {
   const sortedReadingLogs = useMemo(() => {
     return [...readingLogs].sort((a,b) => b.date.localeCompare(a.date));
   }, [readingLogs]);
+
+  if (loading) return <div className="p-10 text-center animate-pulse">Loading...</div>;
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-32">
