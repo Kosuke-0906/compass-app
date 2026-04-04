@@ -102,15 +102,17 @@ export default function ReadingPage() {
 
   const handleUpdateProgress = async (book: Book, progress: number) => {
     if (!user) return;
-    const updatedBook = { ...book, progress };
+    const { id, ...data } = book;
+    const updateData: any = { ...data, progress };
+    
     if (progress >= 100) {
-      updatedBook.status = 'finished';
-      updatedBook.endDate = format(new Date(), "yyyy-MM-dd");
+      updateData.status = 'finished';
+      updateData.endDate = format(new Date(), "yyyy-MM-dd");
     } else {
-      updatedBook.status = 'reading';
-      updatedBook.endDate = undefined;
+      updateData.status = 'reading';
+      updateData.endDate = ""; // Use empty string to clear previous date
     }
-    await saveBook(user.uid, updatedBook, book.id);
+    await saveBook(user.uid, updateData, book.id);
   };
 
   const handleSaveLog = async () => {
@@ -159,15 +161,15 @@ export default function ReadingPage() {
 
   const handleRevertToReading = async (book: Book) => {
     if (!user || !confirm(dict.daily.revertConfirm)) return;
-    const updatedBook: Book = { 
-      ...book, 
+    const { id, ...data } = book;
+    const updateData: any = { 
+      ...data, 
       status: 'reading', 
       progress: 99, 
-      endDate: undefined 
+      endDate: "" // Clear completion date explicitly
     };
-    await saveBook(user.uid, updatedBook, book.id);
-    // Explicitly update local progress to match
-    setLocalProgress(prev => ({ ...prev, [book.id]: 99 }));
+    await saveBook(user.uid, updateData, id);
+    setLocalProgress(prev => ({ ...prev, [id]: 99 }));
   };
 
   if (loading) return <div className="p-10 text-center animate-pulse">Loading...</div>;
