@@ -154,21 +154,8 @@ function DailyContent() {
     
     // ルーティンの同期
     const qRoutines = query(collection(db, `users/${user.uid}/routines`), where("date", "==", todayStr));
-    const unsubRoutines = onSnapshot(qRoutines, async (snap) => {
+    const unsubRoutines = onSnapshot(qRoutines, (snap) => {
       const fetchedRoutines = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RoutineItem));
-      
-      // ルーティンが空で、今日以降の日付の場合のみマスタールーティンからコピー
-      const isFutureOrToday = displayDate >= startOfDay(new Date());
-      if (fetchedRoutines.length === 0 && isFutureOrToday && !provisioningRef.current[todayStr]) {
-        provisioningRef.current[todayStr] = true;
-        const masterData = await getMasterRoutines(user.uid);
-        if (masterData.length > 0) {
-          // Promise.allで一括保存（順序は問わない）
-          await Promise.all(masterData.map(m => 
-            saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 })
-          ));
-        }
-      }
       setRoutines(fetchedRoutines);
     });
 
@@ -182,7 +169,26 @@ function DailyContent() {
       unsubRoutines();
       unsubTodos();
     };
-  }, [user, todayStr, displayDate]);
+  }, [user, todayStr]);
+
+  // ルーティンの初回プロビジョニング（マスタールーティンからのコピー）
+  useEffect(() => {
+    if (!user || !dailyLogLoaded || routines.length > 0 || provisioningRef.current[todayStr]) return;
+    
+    const isFutureOrToday = displayDate >= startOfDay(new Date());
+    if (!isFutureOrToday) return;
+
+    const provision = async () => {
+      provisioningRef.current[todayStr] = true;
+      const masterData = await getMasterRoutines(user.uid);
+      if (masterData.length > 0) {
+        await Promise.all(masterData.map(m => 
+          saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 })
+        ));
+      }
+    };
+    provision();
+  }, [user, dailyLogLoaded, routines.length, todayStr, displayDate]);
 
   // オート充実度計算
   const calculatedFulfillment = useMemo(() => {
