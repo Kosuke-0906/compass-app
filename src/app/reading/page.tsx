@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Plus, Trash2, History, BookOpen, CheckCircle2, ChevronRight, Clock, Edit2 } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, History, BookOpen, CheckCircle2, ChevronRight, Clock, Edit2, Search, Filter, RotateCcw, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
-import { format } from "date-fns";
+import { format, isWithinInterval, parseISO } from "date-fns";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { 
@@ -32,6 +32,17 @@ export default function ReadingPage() {
   
   const [localProgress, setLocalProgress] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+
+  // Search & Filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [startDateFilter, setStartDateFilter] = useState("");
+  const [endDateFilter, setEndDateFilter] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Edit Book state
+  const [editingBook, setEditingBook] = useState<Book | null>(null);
+  const [editBookTitle, setEditBookTitle] = useState("");
+  const [editBookEndDate, setEditBookEndDate] = useState("");
 
   // 1. Real-time Books Sync
   useEffect(() => {
@@ -135,10 +146,49 @@ export default function ReadingPage() {
     await deleteReadingLog(user.uid, logId);
   };
 
+  const handleUpdateBookMeta = async () => {
+    if (!user || !editingBook) return;
+    const updatedBook = { 
+      ...editingBook, 
+      title: editBookTitle,
+      endDate: editingBook.status === 'finished' ? editBookEndDate : undefined
+    };
+    await saveBook(user.uid, updatedBook, editingBook.id);
+    setEditingBook(null);
+  };
+
+  const handleRevertToReading = async (book: Book) => {
+    if (!user || !confirm(dict.daily.revertConfirm)) return;
+    const updatedBook: Book = { 
+      ...book, 
+      status: 'reading', 
+      progress: 99, 
+      endDate: undefined 
+    };
+    await saveBook(user.uid, updatedBook, book.id);
+    // Explicitly update local progress to match
+    setLocalProgress(prev => ({ ...prev, [book.id]: 99 }));
+  };
+
   if (loading) return <div className="p-10 text-center animate-pulse">Loading...</div>;
 
-  const readingBooks = books.filter(b => b.status === 'reading');
-  const finishedBooks = books.filter(b => b.status === 'finished');
+  // Apply filters
+  const filteredBooks = books.filter(book => {
+    const matchesSearch = book.title.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    let matchesDate = true;
+    if (startDateFilter || endDateFilter) {
+      const bookDate = parseISO(book.startDate);
+      const start = startDateFilter ? parseISO(startDateFilter) : new Date(0);
+      const end = endDateFilter ? parseISO(endDateFilter) : new Date(8640000000000000);
+      matchesDate = isWithinInterval(bookDate, { start, end });
+    }
+    
+    return matchesSearch && matchesDate;
+  });
+
+  const readingBooks = filteredBooks.filter(b => b.status === 'reading');
+  const finishedBooks = filteredBooks.filter(b => b.status === 'finished');
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-32">
@@ -156,6 +206,55 @@ export default function ReadingPage() {
           <Plus size={24} />
         </button>
       </header>
+
+      {/* Filter Bar */}
+      <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
+        <div className="flex items-center p-2 gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+            <input 
+              type="text"
+              placeholder={dict.daily.searchPlaceholder}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-muted/30 border-none rounded-xl py-2.5 pl-10 pr-4 text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+            />
+          </div>
+          <button 
+            onClick={() => setShowFilters(!showFilters)}
+            className={`p-2.5 rounded-xl transition-all ${showFilters ? 'bg-primary text-white shadow-md' : 'bg-muted/50 text-muted-foreground hover:bg-muted'}`}
+          >
+            <Filter size={20} />
+          </button>
+          {(searchQuery || startDateFilter || endDateFilter) && (
+            <button 
+              onClick={() => { setSearchQuery(""); setStartDateFilter(""); setEndDateFilter(""); }}
+              className="p-2.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+            >
+              <X size={20} />
+            </button>
+          )}
+        </div>
+        
+        {showFilters && (
+          <div className="p-4 border-t border-border bg-slate-50/50 flex flex-wrap gap-4 animate-in slide-in-from-top-2 duration-200">
+            <div className="flex-1 min-w-[140px] space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{dict.daily.filterStartDate}</label>
+              <input 
+                type="date" value={startDateFilter} onChange={(e) => setStartDateFilter(e.target.value)}
+                className="w-full bg-white border border-border rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+              />
+            </div>
+            <div className="flex-1 min-w-[140px] space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{dict.daily.filterEndDate}</label>
+              <input 
+                type="date" value={endDateFilter} onChange={(e) => setEndDateFilter(e.target.value)}
+                className="w-full bg-white border border-border rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Book List Section */}
@@ -219,12 +318,37 @@ export default function ReadingPage() {
               {finishedBooks.map(book => (
                 <div 
                   key={book.id} 
-                  className={`p-4 rounded-2xl border bg-white border-border hover:border-primary/50 cursor-pointer ${selectedBook?.id === book.id ? 'ring-2 ring-primary/40' : ''}`}
+                  className={`p-4 rounded-2xl border bg-white border-border hover:border-primary/50 cursor-pointer transition-all ${selectedBook?.id === book.id ? 'ring-2 ring-primary/40' : ''}`}
                   onClick={() => handleBookClick(book)}
                 >
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-medium line-through decoration-muted-foreground/30">{book.title}</h3>
-                    <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">{book.endDate}</span>
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <h3 className="font-medium line-through decoration-muted-foreground/30 mb-1">{book.title}</h3>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">{book.endDate}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleRevertToReading(book); }} 
+                        title={dict.daily.revertToReading}
+                        className="text-muted-foreground hover:text-primary p-2 hover:bg-primary/5 rounded-lg transition-colors"
+                      >
+                        <RotateCcw size={16} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setEditingBook(book); setEditBookTitle(book.title); setEditBookEndDate(book.endDate || ""); }} 
+                        className="text-muted-foreground hover:text-primary p-2 hover:bg-primary/5 rounded-lg transition-colors"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteBook(book.id); }} 
+                        className="text-muted-foreground hover:text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -349,6 +473,40 @@ export default function ReadingPage() {
             <div className="flex gap-3">
               <button onClick={() => { setShowLogInput(false); setEditLogId(null); }} className="flex-1 py-3 font-bold text-muted-foreground hover:bg-muted rounded-xl transition-all">キャンセル</button>
               <button onClick={handleSaveLog} className="flex-1 py-3 font-bold bg-primary text-white rounded-xl shadow-lg hover:brightness-110 transition-all">{editLogId ? "更新する" : "記録する"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Book Modal */}
+      {editingBook && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-xl font-bold mb-6">{dict.daily.editBook}</h2>
+            
+            <div className="space-y-4 mb-8">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase">{dict.daily.bookTitle}</label>
+                <input 
+                  type="text" value={editBookTitle} onChange={(e) => setEditBookTitle(e.target.value)}
+                  className="w-full bg-muted/30 border border-border rounded-xl p-4 focus:ring-2 focus:ring-primary/20 outline-none font-medium"
+                />
+              </div>
+
+              {editingBook.status === 'finished' && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">{dict.daily.endDate}</label>
+                  <input 
+                    type="date" value={editBookEndDate} onChange={(e) => setEditBookEndDate(e.target.value)}
+                    className="w-full bg-muted/30 border border-border rounded-xl p-4 focus:ring-2 focus:ring-primary/20 outline-none font-medium"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setEditingBook(null)} className="flex-1 py-3 font-bold text-muted-foreground hover:bg-muted rounded-xl transition-all">キャンセル</button>
+              <button onClick={handleUpdateBookMeta} className="flex-1 py-3 font-bold bg-primary text-white rounded-xl shadow-lg hover:brightness-110 transition-all">保存する</button>
             </div>
           </div>
         </div>
