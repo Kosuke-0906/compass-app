@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Plus, Trash2, History, BookOpen, CheckCircle2, ChevronRight, Clock, Edit2, Search, Filter, RotateCcw, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -55,8 +55,8 @@ export default function ReadingPage() {
       
       // Sync localProgress: If server value matches local intent, clear the local intent
       setLocalProgress(prev => {
-        const next = { ...prev };
         let changed = false;
+        const next = { ...prev };
         data.forEach(book => {
           if (next[book.id] !== undefined && next[book.id] === book.progress) {
             delete next[book.id];
@@ -174,23 +174,34 @@ export default function ReadingPage() {
 
   if (loading) return <div className="p-10 text-center animate-pulse">Loading...</div>;
 
-  // Apply filters
-  const filteredBooks = books.filter(book => {
-    const matchesSearch = book.title.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    let matchesDate = true;
-    if (startDateFilter || endDateFilter) {
-      const bookDate = parseISO(book.startDate);
-      const start = startDateFilter ? parseISO(startDateFilter) : new Date(0);
-      const end = endDateFilter ? parseISO(endDateFilter) : new Date(8640000000000000);
-      matchesDate = isWithinInterval(bookDate, { start, end });
-    }
-    
-    return matchesSearch && matchesDate;
-  });
+  // Apply filters with Memoization
+  const filteredBooks = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    const startBound = startDateFilter ? parseISO(startDateFilter) : new Date(0);
+    const endBound = endDateFilter ? parseISO(endDateFilter) : new Date(8640000000000000);
+    const hasDateFilter = !!(startDateFilter || endDateFilter);
 
-  const readingBooks = filteredBooks.filter(b => b.status === 'reading');
-  const finishedBooks = filteredBooks.filter(b => b.status === 'finished');
+    return books.filter(book => {
+      const matchesSearch = book.title.toLowerCase().includes(q);
+      
+      let matchesDate = true;
+      if (hasDateFilter) {
+        const bookDate = parseISO(book.startDate);
+        matchesDate = isWithinInterval(bookDate, { start: startBound, end: endBound });
+      }
+      
+      return matchesSearch && matchesDate;
+    });
+  }, [books, searchQuery, startDateFilter, endDateFilter]);
+
+  const { readingBooks, finishedBooks } = useMemo(() => ({
+    readingBooks: filteredBooks.filter(b => b.status === 'reading'),
+    finishedBooks: filteredBooks.filter(b => b.status === 'finished')
+  }), [filteredBooks]);
+
+  const sortedReadingLogs = useMemo(() => {
+    return [...readingLogs].sort((a,b) => b.date.localeCompare(a.date));
+  }, [readingLogs]);
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-32">
@@ -383,7 +394,7 @@ export default function ReadingPage() {
                       <p className="text-sm">{dict.daily.noHistory}</p>
                     </div>
                   ) : (
-                    readingLogs.sort((a,b) => b.date.localeCompare(a.date)).map(log => (
+                    sortedReadingLogs.map(log => (
                       <div key={log.id} className="group flex items-center justify-between p-3 bg-muted/20 rounded-xl border border-transparent hover:border-border transition-all">
                         <div className="flex-1">
                           <div className="font-bold text-sm">{log.date}</div>
