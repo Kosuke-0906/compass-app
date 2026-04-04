@@ -32,6 +32,7 @@ export default function ReadingPage() {
   
   const [localProgress, setLocalProgress] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [loadingLogs, setLoadingLogs] = useState(true);
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -44,47 +45,42 @@ export default function ReadingPage() {
   const [editBookTitle, setEditBookTitle] = useState("");
   const [editBookEndDate, setEditBookEndDate] = useState("");
 
-  // 1. Real-time Books Sync
+
+  // 1. Unified Real-time Data Sync (Books & Logs)
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, `users/${user.uid}/books`));
-    const unsub = onSnapshot(q, (snap) => {
+    setLoading(true);
+
+    const qBooks = query(collection(db, `users/${user.uid}/books`));
+    const unsubBooks = onSnapshot(qBooks, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Book));
       setBooks(data);
-      setLoading(false);
-      
-      // Sync localProgress: If server value matches local intent, clear the local intent
-      setLocalProgress(prev => {
-        let changed = false;
-        const next = { ...prev };
-        data.forEach(book => {
-          if (next[book.id] !== undefined && next[book.id] === book.progress) {
-            delete next[book.id];
-            changed = true;
-          }
-        });
-        return changed ? next : prev;
-      });
+      if (!loadingLogs) setLoading(false);
     });
-    return () => unsub();
+
+    const qLogs = query(collection(db, `users/${user.uid}/readingLogs`));
+    const unsubLogs = onSnapshot(qLogs, (snap) => {
+      const logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReadingLog));
+      setReadingLogs(logs);
+      setLoadingLogs(false);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubBooks();
+      unsubLogs();
+    };
   }, [user]);
 
-  // 2. Real-time Reading Logs Sync for the selected book
-  useEffect(() => {
-    if (!user || !selectedBook) {
-      setReadingLogs([]);
-      return;
-    }
-    const q = query(
-      collection(db, `users/${user.uid}/readingLogs`),
-      where("bookId", "==", selectedBook.id)
-    );
-    const unsub = onSnapshot(q, (snap) => {
-       const logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReadingLog));
-       setReadingLogs(logs);
-    });
-    return () => unsub();
-  }, [user, selectedBook?.id, selectedBook]);
+  // Filtered logs for the selected book (Computed in memory for "explosive" speed)
+  const selectedBookLogs = useMemo(() => {
+    if (!selectedBook) return [];
+    return readingLogs.filter(log => log.bookId === selectedBook.id);
+  }, [readingLogs, selectedBook?.id]);
+
+  const sortedReadingLogsForSelected = useMemo(() => {
+    return [...selectedBookLogs].sort((a,b) => b.date.localeCompare(a.date));
+  }, [selectedBookLogs]);
 
   const handleAddBook = async () => {
     if (!user || !newBookTitle.trim()) return;
@@ -196,10 +192,6 @@ export default function ReadingPage() {
     readingBooks: filteredBooks.filter(b => b.status === 'reading'),
     finishedBooks: filteredBooks.filter(b => b.status === 'finished')
   }), [filteredBooks]);
-
-  const sortedReadingLogs = useMemo(() => {
-    return [...readingLogs].sort((a,b) => b.date.localeCompare(a.date));
-  }, [readingLogs]);
 
   if (loading) return <div className="p-10 text-center animate-pulse">Loading...</div>;
 
@@ -388,13 +380,13 @@ export default function ReadingPage() {
                 </h3>
 
                 <div className="flex-1 space-y-4 overflow-y-auto max-h-[400px] pr-2">
-                  {readingLogs.length === 0 ? (
+                  {selectedBookLogs.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
                       <Clock size={32} className="opacity-20" />
                       <p className="text-sm">{dict.daily.noHistory}</p>
                     </div>
                   ) : (
-                    sortedReadingLogs.map(log => (
+                    sortedReadingLogsForSelected.map(log => (
                       <div key={log.id} className="group flex items-center justify-between p-3 bg-muted/20 rounded-xl border border-transparent hover:border-border transition-all">
                         <div className="flex-1">
                           <div className="font-bold text-sm">{log.date}</div>
