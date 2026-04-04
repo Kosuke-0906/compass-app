@@ -148,6 +148,8 @@ function DailyContent() {
   // ルーティンとToDoの取得
   const [routines, setRoutines] = useState<RoutineItem[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [routinesLoaded, setRoutinesLoaded] = useState(false);
+  const [todosLoaded, setTodosLoaded] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -157,12 +159,20 @@ function DailyContent() {
     const unsubRoutines = onSnapshot(qRoutines, (snap) => {
       const fetchedRoutines = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RoutineItem));
       setRoutines(fetchedRoutines);
+      setRoutinesLoaded(true);
+    }, (err) => {
+      console.error(err);
+      setRoutinesLoaded(true);
     });
 
     // ToDoの同期
     const qTodos = query(collection(db, `users/${user.uid}/todos`), where("date", "==", todayStr));
     const unsubTodos = onSnapshot(qTodos, (snap) => {
       setTodos(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TodoItem)));
+      setTodosLoaded(true);
+    }, (err) => {
+      console.error(err);
+      setTodosLoaded(true);
     });
 
     return () => {
@@ -173,22 +183,32 @@ function DailyContent() {
 
   // ルーティンの初回プロビジョニング（マスタールーティンからのコピー）
   useEffect(() => {
-    if (!user || !dailyLogLoaded || routines.length > 0 || provisioningRef.current[todayStr]) return;
+    // ユーザー、基本ログ、ルーティン一覧が「完全にロード完了」した後に判定
+    if (!user || !dailyLogLoaded || !routinesLoaded || provisioningRef.current[todayStr]) return;
     
+    // 既にルーティンが存在する場合はプロビジョニング不要
+    if (routines.length > 0) return;
+
     const isFutureOrToday = displayDate >= startOfDay(new Date());
     if (!isFutureOrToday) return;
 
     const provision = async () => {
       provisioningRef.current[todayStr] = true;
       const masterData = await getMasterRoutines(user.uid);
+      
       if (masterData.length > 0) {
-        await Promise.all(masterData.map(m => 
-          saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 })
-        ));
+        // 重複保存を避けるための追加チェック（念のため）
+        // Promise.allで並列実行する前に、現在の最新状態を再度考慮する
+        for (const m of masterData) {
+          // 同じテキストのものが既にstateにないか（race condition対策）
+          if (!routines.some(r => r.text === m.text)) {
+            await saveRoutine(user.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 });
+          }
+        }
       }
     };
     provision();
-  }, [user, dailyLogLoaded, routines.length, todayStr, displayDate]);
+  }, [user, dailyLogLoaded, routinesLoaded, routines, todayStr, displayDate]);
 
   // オート充実度計算
   const calculatedFulfillment = useMemo(() => {
@@ -386,7 +406,23 @@ function DailyContent() {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-bold text-xl flex items-center gap-2"><RotateCw className="text-primary" size={22}/> {dict.daily.routine}</h2>
-          <Link href="/settings/routines" className="text-xs font-bold text-primary px-3 py-1.5 rounded-full border border-gray-100">{dict.daily.manageRoutines}</Link>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={async () => {
+                const masterData = await getMasterRoutines(user?.uid || "");
+                for (const m of masterData) {
+                  if (!routines.some(r => r.text === m.text)) {
+                    await saveRoutine(user!.uid, { text: m.text, date: todayStr, completed: false, achievement: 1 });
+                  }
+                }
+              }}
+              className="p-2 hover:bg-primary/5 rounded-full text-primary transition-colors"
+              title="Sync Master Routines"
+            >
+              <RotateCw size={16} className={isDirty.routines ? "animate-spin" : ""} />
+            </button>
+            <Link href="/settings/routines" className="text-xs font-bold text-primary px-3 py-1.5 rounded-full border border-gray-100">{dict.daily.manageRoutines}</Link>
+          </div>
         </div>
         <div className="space-y-3">
           {routines.map((routine) => {
@@ -406,7 +442,13 @@ function DailyContent() {
                          <button key={lv} onClick={() => { handleUpdateRoutine(routine, { achievement: lv }); setExpandedRoutineId(null); }} className={`w-9 h-9 rounded-full text-xs font-black border-2 transition-all ${currentLevel === lv ? "text-white " + getAchievementColor(lv) + " border-transparent" : "bg-white text-muted-foreground border-gray-100"}`}>{lv}</button>
                        ))}
                     </div>
-                    <input type="text" value={routine.comment || ""} onChange={e => handleUpdateRoutine(routine, { comment: e.target.value })} placeholder="メモ..." className="w-full bg-transparent border-b border-gray-100 py-1 text-xs outline-none font-medium" />
+                    <input 
+                      type="text" 
+                      defaultValue={routine.comment || ""} 
+                      onBlur={e => handleUpdateRoutine(routine, { comment: e.target.value })} 
+                      placeholder="メモ..." 
+                      className="w-full bg-transparent border-b border-gray-100 py-1 text-xs outline-none font-medium" 
+                    />
                   </div>
                 )}
               </div>
@@ -444,7 +486,13 @@ function DailyContent() {
                         <button key={lv} onClick={() => { handleUpdateTodo(todo, { achievement: lv }); setExpandedTodoId(null); }} className={`w-9 h-9 rounded-full text-xs font-black border-2 transition-all ${currentLevel === lv ? "text-white " + getAchievementColor(lv) + " border-transparent" : "bg-white text-muted-foreground border-gray-100"}`}>{lv}</button>
                       ))}
                     </div>
-                    <input type="text" value={todo.comment || ""} onChange={e => handleUpdateTodo(todo, { comment: e.target.value })} placeholder="メモ..." className="w-full bg-transparent border-b border-gray-100 py-1 text-xs outline-none font-medium" />
+                    <input 
+                      type="text" 
+                      defaultValue={todo.comment || ""} 
+                      onBlur={e => handleUpdateTodo(todo, { comment: e.target.value })} 
+                      placeholder="メモ..." 
+                      className="w-full bg-transparent border-b border-gray-100 py-1 text-xs outline-none font-medium" 
+                    />
                   </div>
                 )}
               </div>

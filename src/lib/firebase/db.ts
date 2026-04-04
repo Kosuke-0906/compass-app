@@ -234,19 +234,18 @@ export interface RoutineItem {
   createdAt: Timestamp | FieldValue | null;
 }
 
-export const saveRoutine = async (userId: string, routine: { text: string; date: string; completed: boolean; achievement?: number; comment?: string }, routineId?: string) => {
+export const saveRoutine = async (userId: string, routine: Partial<RoutineItem> & { text: string; date: string }, routineId?: string) => {
   if (!userId) throw new Error("No user ID");
   const ref = routineId
     ? doc(db, `users/${userId}/routines`, routineId)
     : doc(collection(db, `users/${userId}/routines`));
   
-  // Ensure we are sending a clean object with number types for achievement
   const data: Record<string, unknown> = {
     text: routine.text,
     date: routine.date,
-    completed: routine.completed,
-    achievement: routine.achievement || 1, // Default to 1 if missing
-    comment: routine.comment || ""
+    completed: routine.completed ?? false,
+    achievement: Number(routine.achievement ?? 1),
+    comment: routine.comment ?? ""
   };
   
   if (!routineId) data.createdAt = serverTimestamp();
@@ -276,7 +275,7 @@ export interface TodoItem {
   createdAt: Timestamp | FieldValue | null;
 }
 
-export const saveTodo = async (userId: string, todo: { text: string; date: string; completed: boolean; achievement?: number; comment?: string }, todoId?: string) => {
+export const saveTodo = async (userId: string, todo: Partial<TodoItem> & { text: string; date: string }, todoId?: string) => {
   if (!userId) throw new Error("No user ID");
   const ref = todoId
     ? doc(db, `users/${userId}/todos`, todoId)
@@ -285,9 +284,9 @@ export const saveTodo = async (userId: string, todo: { text: string; date: strin
   const data: Record<string, unknown> = {
     text: todo.text,
     date: todo.date,
-    completed: todo.completed,
-    achievement: todo.achievement || 1,
-    comment: todo.comment || ""
+    completed: todo.completed ?? false,
+    achievement: Number(todo.achievement ?? 1),
+    comment: todo.comment ?? ""
   };
   
   if (!todoId) data.createdAt = serverTimestamp();

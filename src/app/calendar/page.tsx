@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DayPicker } from "react-day-picker";
@@ -24,6 +24,8 @@ export default function CalendarPage() {
 
   // 目標データの取得
   const [goals, setGoals] = useState<Goal[]>([]);
+  // 充実度データの取得
+  const [dailyLogs, setDailyLogs] = useState<Record<string, number>>({});
   const { user } = useAuth();
 
   useEffect(() => {
@@ -36,10 +38,32 @@ export default function CalendarPage() {
     return () => unsubscribe();
   }, [user]);
 
+  // 表示中の月の充実度を取得
+  useEffect(() => {
+    if (!user) return;
+    // その月の全データを取得（簡易的に全件取得でも良いが、量が増えるとクエリ制限が必要）
+    // ここでは現在見ている月の前後を含めて取得
+    const q = query(collection(db, `users/${user.uid}/dailyLogs`));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const logs: Record<string, number> = {};
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.fulfillment !== undefined) {
+          logs[doc.id] = data.fulfillment;
+        }
+      });
+      setDailyLogs(logs);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
   const handleDaySelect = (day: Date | undefined) => {
     if (day) {
+      const dateStr = format(day, 'yyyy-MM-dd');
       setSelected(day);
-      router.push(`/?date=${format(day, 'yyyy-MM-dd')}`);
+      // navigationを確実にするため、少し遅延させるか、window.locationを使うことも検討
+      // 今回はrouter.pushの後に確実に反映されるよう、パスを構築
+      router.push(`/?date=${dateStr}`);
     }
   };
 
@@ -53,11 +77,9 @@ export default function CalendarPage() {
 
   // 今年の目標
   const yearGoals = goals.filter(g => g.type === 'year');
-  // 今月の目標 (簡易的に、現在見ている月のものを出す)
-  // 本来は保存時にどの月の目標か指定すべきだが、現状は作成日の月で簡易フィルタリング
   const monthGoals = goals.filter(g => {
     if (g.type !== 'month') return false;
-    const gDate = new Date(g.date);
+    const gDate = parseISO(g.date);
     return gDate.getFullYear() === viewYear && gDate.getMonth() === viewMonthIdx;
   });
   // 長期ターゲット
@@ -66,13 +88,20 @@ export default function CalendarPage() {
   const CustomDayButton = (props: { day: { date: Date }, modifiers: Record<string, boolean>, className?: string }) => {
     const { day, className, ...buttonProps } = props;
     const date = day.date;
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const fulfillment = dailyLogs[dateStr];
     
     return (
       <button 
         {...buttonProps} 
-        className={`${className || ''} flex flex-col items-center justify-center p-1 w-full h-full relative focus:outline-none focus:ring-2 focus:ring-primary/50`}
+        className={`${className || ''} flex flex-col items-center justify-center p-1 w-full h-full relative focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all hover:bg-primary/5 rounded-lg`}
       >
-        <span className="text-sm font-medium">{date.getDate()}</span>
+        <span className="text-sm font-bold">{date.getDate()}</span>
+        {fulfillment !== undefined && (
+          <span className="text-[10px] font-black mt-0.5 leading-none transition-all pulse" style={{ color: `hsl(${220 - (fulfillment * 2.2)}, 80%, 50%)` }}>
+            {fulfillment}
+          </span>
+        )}
       </button>
     );
   };
