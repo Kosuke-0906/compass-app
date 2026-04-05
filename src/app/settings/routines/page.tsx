@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Plus, Trash2, GripVertical, Save } from "lucide-react";
+import { format } from "date-fns";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { collection, query, onSnapshot } from "firebase/firestore";
@@ -36,21 +37,29 @@ export default function RoutineSettingsPage() {
       text: newRoutineText.trim(),
       order: routines.length
     };
-    const id = await saveMasterRoutine(user.uid, newRoutine);
-    setRoutines([...routines, { id, ...newRoutine }]);
+    
+    // UIを即座に更新 (Optimistic Update)
     setNewRoutineText("");
+    
+    // 非同期で保存（onSnapshotが後でリストを同期します）
+    await saveMasterRoutine(user.uid, newRoutine);
   };
 
   const handleDeleteRoutine = async (id: string) => {
     if (!user) return;
-    await deleteMasterRoutine(user.uid, id);
-    setRoutines(routines.filter(r => r.id !== id));
+    
+    // UIを即座に更新
+    setRoutines(prev => prev.filter(r => r.id !== id));
+    
+    // マスターと、今日以降のプロビジョニング済みルーティンを一括削除
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    await deleteMasterRoutine(user.uid, id, todayStr);
   };
 
   if (loading) return <div className="p-10 text-center animate-pulse">Loading...</div>;
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-8 animate-in fade-in duration-500 pb-24">
+    <div className="p-6 max-w-2xl mx-auto space-y-8 animate-in fade-in duration-200 pb-24">
       <header className="flex items-center gap-4">
         <button 
           onClick={() => router.back()}
@@ -65,7 +74,7 @@ export default function RoutineSettingsPage() {
         <p className="text-sm text-muted-foreground leading-relaxed">
           ここで設定したルーティンは、新しい日のページを最初に開いたときに自動的に表示されます。
           <br />
-          <span className="text-xs font-bold text-amber-600">※過去の日のルーティンは変更されません。</span>
+          <span className="text-xs font-bold text-red-500">※削除した場合は、今日とそれ以降の日のルーティンからも削除されます。</span>
         </p>
 
         <div className="space-y-3">

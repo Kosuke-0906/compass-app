@@ -372,8 +372,32 @@ export const getMasterRoutines = async (userId: string): Promise<MasterRoutine[]
   return routines.sort((a, b) => a.order - b.order);
 };
 
-export const deleteMasterRoutine = async (userId: string, routineId: string) => {
+export const deleteMasterRoutine = async (userId: string, routineId: string, todayStr?: string) => {
   if (!userId) throw new Error("No user ID");
-  await deleteDoc(doc(db, `users/${userId}/masterRoutines`, routineId));
+  
+  const masterRef = doc(db, `users/${userId}/masterRoutines`, routineId);
+  const masterSnap = await getDoc(masterRef);
+  
+  if (masterSnap.exists() && todayStr) {
+    const text = masterSnap.data().text;
+    if (text) {
+      // 該当するMasterRoutineと同じテキストを持つ、今日以降のルーティンを削除
+      const q = query(
+        collection(db, `users/${userId}/routines`),
+        where("text", "==", text)
+      );
+      const routinesSnap = await getDocs(q);
+      const deletePromises = [];
+      routinesSnap.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.date >= todayStr) {
+          deletePromises.push(deleteDoc(docSnap.ref));
+        }
+      });
+      await Promise.all(deletePromises);
+    }
+  }
+  
+  await deleteDoc(masterRef);
 };
 

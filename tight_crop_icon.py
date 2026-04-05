@@ -9,7 +9,7 @@ width, height = img.size
 # 1200px square will make the icon look significantly larger as requested.
 crop_size = 1300 
 left = (width - crop_size) // 2
-top = 0 # It's centered in the top area of the 1000px container
+top = (height - crop_size) // 2 # Centered perfectly vertically
 right = left + crop_size
 bottom = top + crop_size
 
